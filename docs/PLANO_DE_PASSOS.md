@@ -43,12 +43,16 @@ Critério de aceite:
 - o build imprime anomalias para os produtos 96, 136 e 130 e informa produtos com múltiplas promoções ativas;
 - `tests/test_data.py` valida os itens acima.
 
-## Passo 2 — Segurança do banco e autorizações
+## Passo 2 — Conexões e segurança do banco
 
-Critério de aceite:
-- `set_authorizer` bloqueia acessos indevidos;
-- `customer_id` não entra como argumento de tools;
-- leitura e escrita são separadas em conexões diferentes.
+- [x] `conn_leitura()` abre o banco com `mode=ro` e bloqueia INSERT, UPDATE e DELETE;
+- [x] `conn_escrita()` é importada somente por `memory.py`;
+- [x] o authorizer bloqueia a leitura de `products.description_raw` e `customers.phone`;
+- [x] `customers.email` continua legível para verificação de identidade;
+- [x] `PRAGMA foreign_keys = ON` é habilitado nas conexões de leitura e escrita;
+- [x] `tests/test_security.py` cobre os critérios acima.
+
+Commit sugerido: `feat(db): conexões leitura/escrita e authorizer`
 
 ## Passo 3 — Schemas e validações Pydantic
 

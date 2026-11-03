@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .db import conn_escrita
+
 
 def registrar_mensagem(*, conversa_id: str, role: str, content: str, provider: str | None = None) -> str:
     """Registra uma mensagem do usuário ou do assistente no histórico da conversa."""
