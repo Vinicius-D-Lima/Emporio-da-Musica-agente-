@@ -121,7 +121,7 @@ def _ensure_conversation_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE conversations ADD COLUMN summary TEXT")
     if "summarized_until_message_id" not in columns:
         conn.execute(
-            "ALTER TABLE conversations ADD COLUMN summarized_until_message_id INTEGER"
+            "ALTER TABLE conversations ADD COLUMN summarized_until_message_id TEXT"
         )
     if "verification_attempts" not in columns:
         conn.execute(

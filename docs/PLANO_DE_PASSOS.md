@@ -115,11 +115,14 @@ Critério de aceite:
 
 ## Passo 8 — Sistema de memória e histórico
 
-Critério de aceite:
-- `memory.py` salva mensagens e tool calls;
-- conversas e mensagens ficam persistidas em SQLite;
-- histórico pode ser recuperado sem expor dados sensíveis;
-- conversas longas são resumidas, mantendo as mensagens recentes completas, com `summary` e `summarized_until_message_id`.
+- [x] `memory.py` cria conversas e persiste mensagens, provedor e chamadas de tools no SQLite;
+- [x] recuperação é isolada pelo identificador da conversa e não retorna argumentos de tools; e-mail/telefone reconhecíveis nas mensagens e nos argumentos são redigidos;
+- [x] acima de 20 mensagens ainda não resumidas, produz resumo por callback injetável, mantém as 10 mensagens recentes completas e registra `summary` e `summarized_until_message_id`;
+- [x] falha do resumidor preserva todas as mensagens originais; resumos sucessivos incorporam o resumo anterior.
+
+A integração do callback com o provedor real depende da implementação de `llm.py` e do loop em `agent.py`, previstos em passos próprios. As mensagens originais não são apagadas.
+
+Commit sugerido: `feat(memory): persistência e resumo do histórico`
 
 ## Passo 9 — Prompts e persona
 

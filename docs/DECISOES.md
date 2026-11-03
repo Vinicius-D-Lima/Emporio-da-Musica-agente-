@@ -20,6 +20,8 @@
 | Parcelamento segue o §3.1: até 3x, parcela mínima de R$ 50; de 4x a 6x, R$ 80; de 7x a 12x, R$ 100. | A regra detalhada do manual foi escolhida para orientar os cálculos. |
 | A tool `simular_parcelamento` centralizará os cálculos no código. | Evita erros matemáticos, condições inventadas e consumo de tokens com contas. |
 | A simulação aceita um produto ou um valor explícito, nunca ambos; itens indisponíveis não são parcelados. | Mantém a origem do preço inequívoca e evita cotar produtos sem disponibilidade para venda. |
+| Resumir após mais de 20 mensagens não resumidas, preservando as 10 mais recentes; o resumo é gerado por callback injetável e atualizado somente após sucesso. | Mantém contexto recente, limita o tamanho do histórico e preserva todas as mensagens se o provedor falhar. |
+| Redigir e-mails e telefones nos argumentos de chamadas de tools e textos de mensagens antes de retorná-los ao histórico ou ao resumidor. | Reduz a exposição e a retenção desnecessária de dados pessoais no contexto do agente. |
 | `total_brl` é o valor oficial; divergências marcam `total_needs_review` e encaminham o caso à equipe. | O total do pedido não deve ser substituído por uma estimativa com preço atual. |
 | A descrição original do produto nunca é enviada ao modelo. | Há inconsistências entre descrições, nomes e especificações dos dados. |
 | Cliente é identificado por número do pedido e e-mail; `customer_id` verificado fica na sessão. | A identidade não deve vir como argumento do modelo. |

@@ -43,7 +43,7 @@ Os contatos adotados na documentação são telefone `(67) 3341-4444`, WhatsApp 
 
 ### Persistência do histórico
 
-SQLite com `sqlite3` puro em um único arquivo, sem ORM. Os dados são relacionais, as consultas são fixas e o banco da loja é reconstruído a partir dos CSVs. Conversas, mensagens e chamadas de tools ficam em tabelas do agente; o histórico será resumido, mantendo as mensagens recentes completas. O resumo fica associado à conversa. A conexão de escrita é isolada em `memory.py`; as tools consultam a base em modo somente leitura, com `set_authorizer` e colunas explicitamente listadas. Redis não é necessário para a execução local em um único processo. Se o projeto crescer, uma alternativa futura é SQLAlchemy/SQLModel com migrations.
+SQLite com `sqlite3` puro em um único arquivo, sem ORM. Os dados são relacionais, as consultas são fixas e o banco da loja é reconstruído a partir dos CSVs. `memory.py` persiste conversas, mensagens, provedor e chamadas de tools. Acima de 20 mensagens ainda não resumidas, um callback de resumo mantém as 10 mensagens recentes completas e atualiza o resumo e seu limite; as mensagens originais não são apagadas. O provedor real será conectado quando `llm.py` e o loop do agente estiverem implementados. E-mails e telefones reconhecíveis no conteúdo de mensagens e nos argumentos das tools são redigidos antes de serem retornados ao histórico ou enviados ao resumidor. A conexão de escrita é isolada em `memory.py`; as tools consultam a base em modo somente leitura, com `set_authorizer` e colunas explicitamente listadas. Redis não é necessário para a execução local em um único processo. Se o projeto crescer, uma alternativa futura é SQLAlchemy/SQLModel com migrations.
 
 ### Tratamento dos dados
 

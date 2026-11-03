@@ -6,7 +6,7 @@
 
 O agente recebe mensagens pela CLI, classifica intenções, monta o prompt e conversa com um provedor de LLM por uma interface comum. A camada de provedor usa um cliente do pacote `openai`, configurado com `base_url` específico para Gemini ou Groq. O fallback alterna entre os provedores somente em erro de limite ou indisponibilidade; erros de execução de tools não acionam fallback.
 
-O modelo escolhe entre responder com base nas políticas ou chamar tools com parâmetros fixos. As tools consultam o SQLite em modo somente leitura. O histórico e as chamadas são registrados por `memory.py`; conversas longas terão um resumo persistido em `conversations.summary`, junto do identificador da última mensagem resumida.
+O modelo escolhe entre responder com base nas políticas ou chamar tools com parâmetros fixos. As tools consultam o SQLite em modo somente leitura. O histórico e as chamadas são registrados por `memory.py`; acima de 20 mensagens não resumidas, o módulo pode solicitar um resumo via callback, mantendo as 10 mensagens recentes completas e guardando o limite em `conversations.summarized_until_message_id`. As mensagens originais são preservadas.
 
 ```mermaid
 flowchart LR
@@ -50,7 +50,7 @@ flowchart LR
 - `agent.py`: loop limitado de tool calling e resposta.
 - `intent.py`: classificação por regras com múltiplos rótulos e LLM apenas em caso de dúvida.
 - `policies.py`: único acesso ao manual por `get_policy_context()`; políticas são mantidas em `data/processed/politicas.md`.
-- `memory.py`: gravação e recuperação do histórico e do resumo da conversa.
+- `memory.py`: criação de conversas, gravação e recuperação isolada de mensagens/tool calls, redação de argumentos sensíveis e coordenação de resumos por callback injetável.
 - `cli.py`: interface de linha de comando.
 - `tools/`: tools de catálogo, promoções, pedidos e parcelamento determinístico (`simular_parcelamento`).
 - `data/processed/lojas_parceiras.json`: lista explicitamente exemplificativa para redirecionamentos de acessórios.
