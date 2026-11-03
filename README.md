@@ -1,4 +1,4 @@
-<!-- Responsabilidade: documentação geral do projeto, instruções de execução e contexto do agente Empório da Música. -->
+<!-- Responsabilidade: explicar a configuração, as decisões e as limitações do Empório Agente. -->
 
 # Empório Agente
 
@@ -6,102 +6,110 @@
 
 ### Ambiente
 
-1. Crie um ambiente virtual em Python 3.11+.
-2. Instale as dependências do projeto com `pip install -e .`.
-3. Copie `.env.example` para `.env` e ajuste as variáveis de provedor e data de referência.
-4. Execute o build do banco com `python scripts/build_db.py`.
-5. Use a CLI com `python -m src.emporio_agent.cli --help`.
+1. Use Python 3.11 ou superior e crie um ambiente virtual.
+2. Instale o projeto com `pip install -e .`.
+3. Copie `.env.example` para `.env` e configure as chaves dos provedores.
+4. Quando o build estiver implementado/atualizado, gere o banco com `python scripts/build_db.py`.
+5. Inicie a CLI com `python -m emporio_agent.cli`.
 
 ### Provedor e configuração
 
-- `LLM_PROVIDER` define o provedor principal (Gemini por padrão).
-- `LLM_FALLBACK` define o provedor de reserva (Groq).
-- `GEMINI_API_KEY` e `GROQ_API_KEY` devem ser preenchidas no `.env`.
-- `REFERENCE_DATE` pode ficar vazio para usar a data do sistema, ou pode ser definido manualmente, por exemplo `2026-03-23`.
+O padrão é Gemini Flash (`gemini-2.5-flash`) e o reserva é Groq (`openai/gpt-oss-120b`). A integração prevista usa o pacote `openai`, configurando `base_url` conforme o provedor. Preencha `GEMINI_API_KEY` e `GROQ_API_KEY` no `.env`; não coloque chaves reais no repositório. `REFERENCE_DATETIME` define a referência no fuso `America/Campo_Grande` e, se necessário, pode ser alterada.
 
 ## Decisões técnicas
 
 ### Framework/abordagem do agente
 
-Escolhi function calling direto com o SDK, sem framework. O agente tem poucas tools e um loop pequeno, então LangChain, LangGraph e similares seriam abstração demais. Eu queria manter o controle total do fluxo: mensagem, classificação, chamada de tool, resposta e logging. Dados estruturados como produtos, preços, estoque, pedidos e promoções ficam em ferramentas com parâmetros fixos, o que evita text-to-SQL e reduz risco de consulta inadequada. As políticas ficam no system prompt para manter um prompt cacheável e previsível.
+Escolhi function calling direto com loop manual, sem framework. O agente tem poucas tools e quero controlar explicitamente cada chamada. Dados estruturados (produtos, preços, estoque, pedidos e promoções) são acessados por tools de parâmetros fixos, sem text-to-SQL.
 
 ### Modelo e provedor
 
-O modelo padrão é Gemini Flash e a reserva é Groq. O fallback só entra em erro de limite ou indisponibilidade, nunca em erro de tool. O provedor que respondeu fica registrado em cada mensagem para rastreabilidade. O cliente de LLM permanece configurável via `.env` e o projeto não incorpora SDK específico em código até a etapa de implementação real.
+Gemini Flash (`gemini-2.5-flash`) é o provedor principal e Groq (`openai/gpt-oss-120b`) é a reserva. Um cliente do pacote `openai` usa `base_url` específico de cada provedor para manter uma interface uniforme. O fallback só ocorre em 429, timeout ou 5xx, nunca por erro de tool. Se o tool calling do Gemini for incompatível com o endpoint OpenAI-compatible, somente o Gemini migra para o SDK nativo. O provedor que respondeu será registrado em cada mensagem.
+
+Os fatos de cache, limites e preços abaixo (conferido em 03/11/2026; reconferir antes da entrega) são referências sujeitas à validação final.
+
+| Provedor/modelo | Cache e limites conhecidos |
+|---|---|
+| Gemini `gemini-2.5-flash` | O cache implícito vem habilitado nos modelos 2.5 e posteriores, mas não garante economia; o mínimo informado para 2.5 Flash é 2.048 tokens. Cache explícito é oferecido por `generateContent`, não pelo endpoint OpenAI-compatible. Os limites gratuitos por modelo não estão publicados na documentação consultada; o preço oficial do modelo escolhido ainda precisa ser confirmado. |
+| Groq `openai/gpt-oss-120b` | O cache automático atende a modelos GPT-OSS selecionados; o mínimo depende do modelo (128–1.024 tokens), expira após duas horas sem uso e reduz em 50% o custo dos tokens em cache. No plano gratuito, os limites de referência informados são 30 requisições/minuto, 1.000/dia, 8.000 tokens/minuto e 200.000 tokens/dia; os limites efetivos dependem da conta. |
+
+O nome do campo de tokens em cache do endpoint Gemini e a compatibilidade efetiva de tool calling dos endpoints ainda precisam de teste. Não há resultado de comparação de qualidade entre os provedores registrado nesta etapa: [PREENCHER: resultados da comparação, se testados].
 
 ### Interface de interação
 
-A interface é CLI porque o foco é o agente funcionando de forma simples e testável. O núcleo do agente não depende da interface, então FastAPI ou outra entrada seria uma troca da camada externa e não da lógica de negócio.
+A interface inicial é CLI, pois o foco é o agente funcionando. O núcleo recebe texto e devolve texto sem depender da interface; FastAPI é uma evolução futura.
+
+Os contatos adotados na documentação são telefone `(67) 3341-4444`, WhatsApp `(67) 3321-4500` e e-mail `contato@emporiodamusica.com.br`. Essa escolha separa telefone e WhatsApp conforme as informações do manual; não representa confirmação oficial da loja.
 
 ### Persistência do histórico
 
-O SQLite fica em um único arquivo (`data/emporio.db`) e guarda tanto os dados da loja quanto as tabelas de conversas e logs do agente. O histórico e as tool calls ficam persistidos em tabelas separadas; a camada de escrita fica isolada em `memory.py`, enquanto as tools usam conexões somente leitura. Isso mantém a segurança e a clareza da execução.
+SQLite com `sqlite3` puro em um único arquivo, sem ORM. Os dados são relacionais, as consultas são fixas e o banco da loja é reconstruído a partir dos CSVs. Conversas, mensagens e chamadas de tools ficam em tabelas do agente; o histórico será resumido, mantendo as mensagens recentes completas. O resumo fica associado à conversa. A conexão de escrita é isolada em `memory.py`; as tools consultam a base em modo somente leitura, com `set_authorizer` e colunas explicitamente listadas. Redis não é necessário para a execução local em um único processo. Se o projeto crescer, uma alternativa futura é SQLAlchemy/SQLModel com migrations.
 
 ### Tratamento dos dados
 
-- `total_brl` é o valor oficial e o build calcula `total_needs_review` quando há divergência entre total e soma dos itens.
-- `description_raw` fica no banco, mas não é devolvida por nenhuma tool.
-- Disponibilidade e promoções obedecem a regras explícitas: `active` com estoque > 0 é válido; `discontinued` saiu do catálogo; `coming_soon` está em breve; indisponíveis não aparecem em lista, mas são explicados quando perguntados diretamente.
-- Preços em REAL usam `round(x, 2)` e tolerância de 0.01, e a data de referência vem de `REFERENCE_DATE` ou do sistema.
-- O `customer_id` verificado fica na sessão e nunca vem do modelo.
+- `total_brl` é o valor oficial do pedido. Divergências marcam `total_needs_review` e encaminham o caso à equipe, sem informar um valor em revisão.
+- Preços ficam em REAL; usar `round(x, 2)` e tolerância de 0.01.
+- `installments` pode ser NULL para PIX, débito e boleto, que serão tratados como pagamento à vista.
+- A descrição original não é enviada ao modelo; somente uma lista permitida de especificações pode ser exposta, nunca para produtos 135 a 144.
+- Disponibilidade considera status e estoque. Em listas, indisponíveis não aparecem; quando perguntado diretamente, o agente explica o motivo e sugere alternativas válidas.
+- Promoção exige registro ativo para o produto; informar preço original, percentual e preço final. PIX não acumula com promoção; em caso de duas promoções ativas, prevalece a de maior desconto.
+- Data/hora vem de `REFERENCE_DATETIME`, com fuso `America/Campo_Grande` e padrão `2026-03-23T10:00:00`.
+
+O parcelamento segue a regra detalhada do §3.1: até 3x, cada parcela deve ser de pelo menos R$ 50; de 4x a 6x, R$ 80; de 7x a 12x, R$ 100. A tool planejada `simular_parcelamento` fará os cálculos no código para evitar erro matemático, condições inventadas e consumo de tokens com contas. O modelo interpreta e explica o resultado.
 
 ### Arquitetura de retrieval
 
-O projeto parte do princípio de que o manual cabe no prompt com folga e que a recuperação por seção não precisa estar implementada no Passo 0. Em uma evolução futura, RAG com busca híbrida BM25 + embeddings seria a melhor etapa para aumentar escala e flexibilidade, sem trocar a política atual de prompt direto para a entrega inicial.
+O manual fica no system prompt com prompt caching. A versão de referência tem 3.498 tokens; prompt direto evita recuperar o trecho errado, mantém as políticas disponíveis e permite tratar as contradições uma vez no texto limpo. No cenário hipotético de 8 mil clientes × 1.000 chamadas, repetir o manual pode pesar; o cache reaproveita o prefixo fixo, mas tem expiração, tamanho mínimo e regras que variam por provedor, e não elimina o uso da janela de contexto. O cálculo de custo deve ser refeito com o preço oficial do modelo escolhido. RAG híbrido (chunking por seção, BM25 + embeddings) fica como evolução se o manual chegar a 200 páginas ou mudar com frequência; `get_policy_context()` isola o acesso às políticas. A versão limpa do manual e sua contagem de tokens ainda devem ser preenchidas: [PREENCHER: contagem da versão limpa].
 
 ### Estratégia de prompt
 
-A ordem do prompt é: tools → persona + manual → histórico → mensagem nova. Isso deixa no início o que não muda e preserva a regra de que o manual é interno e deve ser parafraseado, sem colar o texto do PDF. O cache do prompt reduz custo e repete a base fixa entre chamadas, enquanto o histórico complementa o contexto dinâmico da conversa.
+A ordem definida é tools → persona + manual → resumo e histórico recente → mensagem nova. O conteúdo fixo fica no início para favorecer o cache. A data e a hora não entram no início do prompt; quando necessárias, são obtidas por `horario_loja()` ou incluídas ao final da mensagem. O manual é interno e deve ser parafraseado, sem colar o texto.
+
+### Classificador e fora de escopo
+
+O classificador começa com regras e pode recorrer ao LLM somente em caso de dúvida. Uma mensagem pode receber múltiplos rótulos: `dado_loja`, `politica`, `acessorio`, `fora_assunto` e `saudacao`; não existe categoria `misto`. `scikit-learn` fica como evolução do Passo 18. A loja vende instrumentos; para acessórios, o agente redireciona com educação usando apenas a lista de exemplo em `data/processed/lojas_parceiras.json` — Mercado Livre, Amazon Brasil, Shopee, Multisom, Mil Sons e Serenata — sem afirmar parceria real. Sites são incluídos somente onde registrados no JSON.
 
 ## Problemas encontrados nos dados e suposições
 
-- Produto 96 `active` com estoque 0; 136 `discontinued` com estoque 13; 130 `coming_soon` com estoque 2 e dois pedidos.
-- Produtos 135 a 144 têm inconsistências entre nome, descrição e specs.
-- `specs` é um JSON textual com chaves diferentes por categoria e o significado de alguns campos varia entre produtos.
-- Categorias 6, 7 e 8 não têm produtos, embora o manual diga que a loja vende itens das categorias correspondentes.
-- Promoções ativas existirem em poucos produtos e, sem datas de início/fim, devem ser tratadas como dados do catálogo e não como cronograma completo.
-- Pedidos com total fora do comportamento esperado exigem a flag `total_needs_review` no build.
-- Há pedidos em status `pending`, `confirmed` e `shipped` em janeiro, fevereiro e março de 2026, o que torna a data de referência relevante.
-- `payment_type` vem como texto com modelos diferentes e parcelamento ambíguo no manual.
-- O manual tem inconsistências de dados e linguagem, como telefone, e-mail e regras de parcelamento divergentes.
+| Problema | Como tratei |
+|---|---|
+| Produto 96 está ativo sem estoque; 136 está descontinuado com estoque; 130 está em breve apesar de ter estoque e pedidos. | O status define a disponibilidade conforme as regras; o estoque não altera o status `coming_soon`. |
+| Produtos 135 a 144 têm inconsistências entre nome, descrição e especificações. | A descrição original não é enviada ao modelo; especificações desses produtos não são expostas. |
+| `specs` é JSON textual com chaves e significados diferentes entre categorias. | Usar somente as chaves permitidas e interpretar cada campo conforme as regras já definidas. |
+| Categorias 6, 7 e 8 não têm produtos, embora o manual mencione esses instrumentos; o catálogo tem 65 produtos apesar da menção a mais de 300. | Responder conforme o catálogo disponível, sem inventar itens. |
+| Promoções ativas não têm datas de início/fim; o Takamine GD20 (95) tem promoção inativa. | Considerar apenas `is_active = 1`; não anunciar a promoção inativa. |
+| As quatro promoções ativas estão nos produtos 127, 121, 90 e 94; algumas outras promoções são inativas e as descrições sazonais não têm datas. | Consultar somente as promoções marcadas como ativas e não inferir uma vigência por nome. |
+| Pedidos 3 e 20 têm total diferente da soma calculada com preços atuais. | Manter `total_brl` como oficial, marcar `total_needs_review` e encaminhar sem divulgar o valor. |
+| `order_items` não registra preço unitário; a comparação usa o preço atual do produto. | Tratar `total_needs_review` como alerta, sem inventar a causa da divergência. |
+| Pedidos 9, 16 e 18 têm parcelas abaixo dos mínimos do §3.1. | Não tratar os valores históricos como condições válidas para novas simulações. |
+| Pedido 7 contradiz a tabela do §3, mas respeita o §3.1. | Para parcelamento, usar a regra detalhada do §3.1; a divergência do manual fica documentada. |
+| Pedidos 8 e 7 têm previsões de entrega anteriores à data de referência; o CSV não traz a data efetiva de recebimento. | Comparar com `REFERENCE_DATETIME` apenas para a previsão. O prazo de arrependimento contado do recebimento não pode ser inferido da previsão. |
+| `payment_method` combina meio e parcelas; há clientes com e-mail repetido e nomes parecidos. | Separar tipo e parcelas; verificar cliente por pedido + e-mail, sem usar e-mail como identificador único. |
+| O manual diverge sobre telefone e WhatsApp, grafia do e-mail, parcelamento e lista de lojas parceiras. | Adotar os contatos documentados em `docs/DECISOES.md`, usar a regra detalhada do §3.1 e marcar as lojas como lista de exemplo. Os contatos não têm confirmação oficial. |
+| O manual cita troca por defeito em 30 dias e garantia legal de 90 dias. | Manter a divergência registrada para tratamento conforme a política após revisão do manual; não inventar uma regra única. |
 
 ## Limitações conhecidas e o que faria com mais tempo
 
-- Implementar RAG com busca híbrida, chunking por seção e fallback para política contextualizada.
-- Melhorar o classificador de intenção com regras explícitas e conjunto de testes dedicados.
-- Validar o modelo e o fallback com comparação real de custo/qualidade entre Gemini e Groq.
-- Adicionar autenticação real para fluxo de cliente, como OTP ou login com WhatsApp.
-- Expandir a gestão de histórico para resumir janela de contexto em conversas longas.
-- Incluir FastAPI como interface alternativa, sem abandonar o núcleo do agente.
+- Testar tool calling real e fallback nos dois provedores; confirmar a disponibilidade do modelo Gemini e os detalhes oficiais de cache, limites e preços antes da entrega.
+- Validar os rótulos do classificador em conjunto escrito pelo usuário e comparar, no Passo 18, com `scikit-learn`.
+- Substituir a lista exemplificativa de lojas por uma lista autorizada, se disponível.
+- Implementar RAG híbrido se o manual crescer ou mudar com frequência.
+- Adicionar autenticação real para consultas de pedido e uma interface FastAPI.
+- Validar e ajustar a política de resumo e janela de histórico.
 
 ## Uso de assistentes de código
 
-Ferramentas: editor de código, busca por texto, execução local de testes e revisão de arquivos. Como usei, por etapa: comecei pela estrutura do projeto e documentação, depois validei a coleta dos testes e mantive o escopo do Passo 0 focado no esqueleto, sem avançar para passos futuros. O que a IA errou e eu corrigi: em um primeiro rascunho, havia placeholders e configurações que não estavam alinhadas com o contexto decidido no prompt; eu os substituí pelas decisões do projeto e pela documentação pedida. O que não deleguei: a definição do escopo, a revisão das regras de negócio e a decisão de não implementar itens em aberto sem autorização.
+- Ferramentas: [PREENCHER: ferramentas utilizadas].
+- Como usei, por etapa: [PREENCHER: como usei, por etapa].
+- O que a IA errou e eu corrigi: [PREENCHER: o que a IA errou e eu corrigi].
+- O que não deleguei: [PREENCHER: o que não deleguei].
 
-O processo foi conduzido em passos pequenos, com critérios de aceite e testes (ver `docs/PLANO_DE_PASSOS.md`) e o registro está em `docs/USO_DE_IA.md`.
+O processo foi planejado em passos pequenos, com critérios de aceite e testes (ver `docs/PLANO_DE_PASSOS.md`); o registro real está em `docs/USO_DE_IA.md`.
 
 ## Exemplos de interação
 
-- `examples/01_catalogo_violoes.md`
-- `examples/02_preco_takamine_gd20.md`
-- `examples/03_devolucao.md`
-- `examples/04_fora_de_escopo_acessorio.md`
-- `examples/05_status_pedido.md`
-
-Links: `examples/01_catalogo_violoes.md`, `examples/02_preco_takamine_gd20.md`, `examples/03_devolucao.md`, `examples/04_fora_de_escopo_acessorio.md`, `examples/05_status_pedido.md`.
-
----
-
-**Abordagem.** Escolhi function calling direto com o SDK, sem framework. O agente tem poucas tools e um loop pequeno, então LangChain, LangGraph e similares seriam abstração demais, e eu queria poder explicar exatamente o que acontece em cada chamada. Dados estruturados (produtos, preços, estoque, pedidos, promoções) ficam em tools com parâmetros fixos, o que evita text-to-SQL e seus riscos. Políticas ficam no system prompt com prompt caching.
-
-**Políticas no prompt.** O manual tem 3.498 tokens (medido com `tiktoken`), então cabe com folga. Prompt direto elimina o risco de recuperar o trecho errado, permite limpar as contradições do manual uma vez e me deu mais tempo para tools, testes e exemplos. Em escala, o caching reduz o custo reaproveitando o prefixo fixo. Limitações: o cache expira depois de alguns minutos, e o manual continua ocupando janela de contexto. Se o manual chegasse a 200 páginas ou mudasse com frequência, migraria para RAG.
-
-**Modelo e provedor.** Gemini Flash como padrão e Groq como reserva. O fallback só entra em erro de limite ou indisponibilidade, e o provedor que respondeu é registrado em cada mensagem.
-
-**Interface.** CLI, porque o foco é o agente funcionando. O núcleo não depende da interface, então FastAPI é só trocar a camada de entrada.
-
-**Persistência.** SQLite em um único arquivo, `sqlite3` puro; histórico e logs ficam no mesmo lugar. Não usei ORM: o banco é recriado do CSV, a segurança depende de recursos do driver e são seis tabelas com consultas fixas.
-
-**Tratamento dos dados.** `total_brl` como valor oficial com `total_needs_review`; descrição fora do prompt; regras de disponibilidade e promoção; `payment_type` separado em tipo e parcelas; preços em REAL com `round(x, 2)` e tolerância; data de referência configurável.
-
-**Fora de escopo.** Duas camadas: regras no system prompt e um classificador de intenção isolado. A loja vende só instrumentos, então acessórios são redirecionados com educação.
+- [Exemplo 01 — catálogo de violões](examples/01_catalogo_violoes.md)
+- [Exemplo 02 — preço do Takamine GD20](examples/02_preco_takamine_gd20.md)
+- [Exemplo 03 — devolução](examples/03_devolucao.md)
+- [Exemplo 04 — acessório fora de escopo](examples/04_fora_de_escopo_acessorio.md)
+- [Exemplo 05 — status de pedido](examples/05_status_pedido.md)

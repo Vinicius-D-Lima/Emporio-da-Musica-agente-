@@ -15,6 +15,7 @@ dependencies = [
 ]
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 markers = [
   "llm: testes que chamam LLM e ficam pulados por padrão",
 ]

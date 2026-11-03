@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS orders (
     status TEXT CHECK(status IN ('pending', 'confirmed', 'shipped', 'delivered', 'cancelled')),
     total_brl REAL,
     payment_type TEXT,
-    installments INTEGER,
+    installments INTEGER DEFAULT NULL,
     tracking_code TEXT,
     estimated_delivery TEXT,
     notes TEXT,
@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
     started_at TEXT,
     verified_customer_id INTEGER,
+    summary TEXT,
+    summarized_until_message_id INTEGER,
     FOREIGN KEY (verified_customer_id) REFERENCES customers(customer_id)
 );
 
