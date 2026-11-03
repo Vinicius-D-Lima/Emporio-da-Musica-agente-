@@ -6,7 +6,7 @@
 
 O agente recebe mensagens pela CLI, classifica intenções, monta o prompt e conversa com um provedor de LLM por uma interface comum. A camada de provedor usa um cliente do pacote `openai`, configurado com `base_url` específico para Gemini ou Groq. O fallback alterna entre os provedores somente em erro de limite ou indisponibilidade; erros de execução de tools não acionam fallback.
 
-O modelo escolhe entre responder com base nas políticas ou chamar tools com parâmetros fixos. As tools consultam o SQLite em modo somente leitura. O histórico e as chamadas são registrados por `memory.py`; conversas longas terão um resumo persistido em `conversations.summary`, junto do identificador da última mensagem resumida.
+O modelo escolhe entre responder com base nas políticas ou chamar tools com parâmetros fixos. As tools consultam o SQLite em modo somente leitura. O histórico e as chamadas são registrados por `memory.py`; acima de 20 mensagens não resumidas, o módulo pode solicitar um resumo via callback, mantendo as 10 mensagens recentes completas e guardando o limite em `conversations.summarized_until_message_id`. As mensagens originais são preservadas.
 
 ```mermaid
 flowchart LR
@@ -30,7 +30,7 @@ flowchart LR
 
 1. A mensagem chega pela CLI e é associada a uma conversa.
 2. `classificar_intencao()` aplica regras e, se persistir dúvida, pode recorrer ao LLM; uma mensagem pode receber vários rótulos.
-3. O agente monta o prompt na ordem: tools → persona e manual → resumo e histórico recente → mensagem nova.
+3. As definições das tools são enviadas separadamente; as mensagens seguem a ordem: persona, regras e manual → resumo contextual (quando houver) → histórico recente → mensagem nova.
 4. `llm.py` chama o provedor principal via cliente `openai` configurado com o `base_url` correspondente.
 5. Se houver 429, timeout ou erro 5xx, o agente tenta o provedor reserva. Erros de tools e validação não acionam fallback.
 6. O modelo pode solicitar uma tool. O dispatcher valida os argumentos e executa consultas de leitura no SQLite ou cálculo determinístico no código.
@@ -45,14 +45,14 @@ flowchart LR
 - `db.py`: conexões SQLite, authorizer e separação de leitura/escrita.
 - `schema.sql`: tabelas da loja e do agente, incluindo campos de resumo da conversa.
 - `schemas.py`: modelos Pydantic para argumentos das tools.
-- `prompts.py`: persona, regras, fora de escopo e formato de resposta.
+- `prompts.py`: persona, regras, fora de escopo, formato e composição do resumo/histórico no contexto enviado ao modelo.
 - `llm.py`: cliente comum do pacote `openai`, `base_url` por provedor e fallback.
 - `agent.py`: loop limitado de tool calling e resposta.
 - `intent.py`: classificação por regras com múltiplos rótulos e LLM apenas em caso de dúvida.
-- `policies.py`: único acesso ao manual por `get_policy_context()`.
-- `memory.py`: gravação e recuperação do histórico e do resumo da conversa.
+- `policies.py`: único acesso ao manual por `get_policy_context()`; políticas são mantidas em `data/processed/politicas.md`.
+- `memory.py`: criação de conversas, gravação e recuperação isolada de mensagens/tool calls, redação de argumentos sensíveis e coordenação de resumos por callback injetável.
 - `cli.py`: interface de linha de comando.
-- `tools/`: tools de catálogo, promoções, pedidos e, conforme o plano, `simular_parcelamento`.
+- `tools/`: tools de catálogo, promoções, pedidos e parcelamento determinístico (`simular_parcelamento`).
 - `data/processed/lojas_parceiras.json`: lista explicitamente exemplificativa para redirecionamentos de acessórios.
 
 `horario_loja()` aplica o horário descrito no §2: segunda a sexta, das 09:00 às 18:00; sábado, das 09:00 às 13:00; domingo fechado. Feriados não são modelados.
@@ -62,6 +62,7 @@ flowchart LR
 - Tabelas da loja: `categories`, `products`, `promotions`, `customers`, `orders`, `order_items`.
 - Tabelas do agente: `conversations`, `messages`, `tool_calls`.
 - `conversations.summary` guarda o resumo; `summarized_until_message_id` registra até qual mensagem ele foi produzido.
+- `conversations.verified_customer_id` mantém a identidade verificada e `verification_attempts` limita tentativas inválidas por conversa.
 - `orders.total_brl` permanece o valor oficial; `total_needs_review` sinaliza divergência.
 - `installments` pode ser NULL para meios de pagamento à vista.
 - A sessão mantém o `customer_id` verificado; ele nunca é fornecido como argumento do modelo.

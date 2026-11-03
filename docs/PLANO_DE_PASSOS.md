@@ -77,21 +77,31 @@ Commit sugerido: `feat(db): conexões leitura/escrita e authorizer`
 
 Commit sugerido: `feat(tools): busca e detalhes de produtos`
 
-## Passo 5 — Tools de promoção e pedido
+## Passo 5 — Promoções e preço final
 
-Critério de aceite:
-- `promocoes_ativas` lista promoções elegíveis;
-- `verificar_cliente` valida pedido + e-mail;
-- `status_pedido` consulta status e total_brl apenas para cliente correto.
-- A regra de duas promoções ativas para o mesmo produto escolhe a de maior desconto.
-- O parcelamento será centralizado na tool planejada `simular_parcelamento`, seguindo §3.1; não deixar o LLM calcular valores.
+- [x] somente promoções com `is_active = 1` e produto existente são consideradas;
+- [x] os preços promocionais são arredondados para duas casas e usam o maior desconto sem acumular;
+- [x] sem promoção, o produto 95 mantém o preço de R$ 2.199,00 e tem PIX de R$ 2.089,05;
+- [x] com promoção, o valor PIX não recebe desconto adicional;
+- [x] promoções inativas não aparecem, incluindo as do produto 96;
+- [x] o relatório do `build_db` identifica produtos com múltiplas promoções ativas;
+- [x] `tests/test_tools.py` valida preços reais e o caso sintético de promoções duplicadas.
 
-## Passo 6 — Segurança e remoção de vazamentos
+Commit sugerido: `feat(tools): promoções e cálculo de preço final`
 
-Critério de aceite:
-- telefone, e-mail e `description_raw` nunca são devolvidos;
-- `SELECT *` não aparece no código;
-- `date.today()` não existe fora do módulo de configuração.
+## Passo 6 — Pedidos e identidade
+
+- [x] `verificar_cliente` compara e-mail sem diferenciar caixa e espaços, e registra `customer_id` somente na conversa;
+- [x] pedido inexistente e e-mail incorreto retornam a mesma resposta;
+- [x] tentativas inválidas são persistidas por conversa e bloqueadas após três tentativas;
+- [x] `status_pedido` recebe o `conversa_id` como contexto interno, não aceita `customer_id` do modelo e restringe pedidos ao cliente verificado;
+- [x] respostas incluem status, data, itens, pagamento, rastreio e previsão, sem telefone ou e-mail;
+- [x] pedidos 3 e 20 ocultam o valor quando `total_needs_review` está ativo;
+- [x] atraso do pedido 8 é calculado com `hoje()` e `REFERENCE_DATETIME`;
+- [x] cancelamentos informam o motivo; pedidos pendentes/confirmados sem rastreio informam que ainda não foram despachados;
+- [x] `tests/test_security.py` cobre verificação, limite por conversa, autorização e privacidade.
+
+Commit sugerido: `feat(tools): verificação de cliente e status de pedido`
 
 ## Passo 7 — LLM provider e fallback
 
@@ -105,18 +115,23 @@ Critério de aceite:
 
 ## Passo 8 — Sistema de memória e histórico
 
-Critério de aceite:
-- `memory.py` salva mensagens e tool calls;
-- conversas e mensagens ficam persistidas em SQLite;
-- histórico pode ser recuperado sem expor dados sensíveis;
-- conversas longas são resumidas, mantendo as mensagens recentes completas, com `summary` e `summarized_until_message_id`.
+- [x] `memory.py` cria conversas e persiste mensagens, provedor e chamadas de tools no SQLite;
+- [x] recuperação é isolada pelo identificador da conversa e não retorna argumentos de tools; e-mail/telefone reconhecíveis nas mensagens e nos argumentos são redigidos;
+- [x] acima de 20 mensagens ainda não resumidas, produz resumo por callback injetável, mantém as 10 mensagens recentes completas e registra `summary` e `summarized_until_message_id`;
+- [x] falha do resumidor preserva todas as mensagens originais; resumos sucessivos incorporam o resumo anterior.
+
+A integração do callback com o provedor real depende da implementação de `llm.py` e do loop em `agent.py`, previstos em passos próprios. As mensagens originais não são apagadas.
+
+Commit sugerido: `feat(memory): persistência e resumo do histórico`
 
 ## Passo 9 — Prompts e persona
 
-Critério de aceite:
-- `prompts.py` organiza persona, regras, fora de escopo e formato de resposta;
-- manual e regras seguem a ordem tools → persona + manual → resumo e histórico → mensagem nova;
-- a tool `simular_parcelamento` deve ser usada em perguntas sobre parcelamento; o modelo não calcula parcelas de cabeça.
+- [x] `prompts.py` organiza persona, regras de negócio, fora de escopo e formato esperado;
+- [x] ferramentas são mantidas separadas das mensagens; o prefixo estático de persona e manual vem antes do resumo, do histórico e da mensagem atual;
+- [x] o resumo é apresentado como contexto, não como instruções; histórico recente e mensagem atual preservam sua ordem;
+- [x] perguntas sobre parcelamento instruem o modelo a chamar `simular_parcelamento`, sem calcular parcelas de cabeça.
+
+Commit sugerido: `feat(prompts): persona e contexto do agente`
 
 ## Passo 10 — Classificador de intenção
 

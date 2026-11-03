@@ -119,7 +119,11 @@ def test_build_database_atende_aos_criterios_do_passo_1(
         colunas_conversa = {
             linha[1] for linha in conn.execute("PRAGMA table_info(conversations)")
         }
-        assert {"summary", "summarized_until_message_id"} <= colunas_conversa
+        assert {
+            "summary",
+            "summarized_until_message_id",
+            "verification_attempts",
+        } <= colunas_conversa
 
         conn.execute(
             """
@@ -140,7 +144,7 @@ def test_build_database_atende_aos_criterios_do_passo_1(
         assert conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0] == 1
         assert conn.execute(
             "SELECT summary, summarized_until_message_id FROM conversations WHERE id = 'conversa-teste'"
-        ).fetchone() == ("Resumo preservado", 17)
+        ).fetchone() == ("Resumo preservado", "17")
         assert conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM tool_calls").fetchone()[0] == 1
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
