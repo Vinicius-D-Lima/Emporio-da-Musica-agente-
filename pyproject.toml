@@ -1,0 +1,20 @@
+# Responsabilidade: configuração do projeto, dependências e markers de pytest para o agente Empório da Música.
+
+[project]
+name = "emporio-agente"
+version = "0.1.0"
+description = "Agente de atendimento do Empório da Música"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pandas",
+  "pydantic",
+  "python-dotenv",
+  "tiktoken",
+  "pytest",
+]
+
+[tool.pytest.ini_options]
+markers = [
+  "llm: testes que chamam LLM e ficam pulados por padrão",
+]

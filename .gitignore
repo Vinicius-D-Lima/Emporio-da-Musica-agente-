@@ -1,0 +1,10 @@
+<!-- Responsabilidade: ignorar artefatos locais e de execução do projeto Empório da Música. -->
+
+.env
+*.db
+__pycache__/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.DS_Store
