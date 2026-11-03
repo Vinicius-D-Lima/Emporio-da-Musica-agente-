@@ -2,6 +2,6 @@
 
 # Uso de assistentes de código
 
-| Data | Passo | O que pedi | O que veio | O que corrigi |
+| Data | Passo | O que pedi | O que veio | O que corrigi / decidi |
 | --- | --- | --- | --- | --- |
 | [PREENCHER: data] | [PREENCHER: passo] | [PREENCHER: o que pedi] | [PREENCHER: o que veio] | [PREENCHER: o que corrigi] |

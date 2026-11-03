@@ -1,8 +1,11 @@
-"""Responsabilidade: recriar o banco de dados da loja a partir dos CSVs do desafio, mantendo idempotência e integridade referencial."""
+"""Responsabilidade: recriar as tabelas da loja a partir dos CSVs, preservando o histórico do agente."""
 
 from __future__ import annotations
 
+import json
 import sqlite3
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import pandas as pd
@@ -10,277 +13,340 @@ import pandas as pd
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DB_PATH = ROOT_DIR / "data" / "emporio.db"
 RAW_DIR = ROOT_DIR / "data" / "raw"
+SCHEMA_PATH = ROOT_DIR / "src" / "emporio_agent" / "schema.sql"
+
+CSV_FILES = {
+    "categories": "desafio_tecnico_ai_eng - categories.csv",
+    "products": "desafio_tecnico_ai_eng - products.csv",
+    "promotions": "desafio_tecnico_ai_eng - promotions.csv",
+    "customers": "desafio_tecnico_ai_eng - customers.csv",
+    "orders": "desafio_tecnico_ai_eng - orders.csv",
+    "order_items": "desafio_tecnico_ai_eng - order_items.csv",
+}
+
+STORE_TABLES = (
+    "order_items",
+    "orders",
+    "promotions",
+    "products",
+    "customers",
+    "categories",
+)
 
 
 def _clean_records(frame: pd.DataFrame) -> list[dict[str, object]]:
-    """Converte DataFrames pandas em registros seguros para inserção em SQLite."""
-    if frame.empty:
-        return []
-    cleaned = frame.where(pd.notna(frame), None)
+    """Converte valores vazios do DataFrame em None para inserção no SQLite."""
+    cleaned = frame.astype(object).where(pd.notna(frame), None)
     return cleaned.to_dict(orient="records")
 
 
+def _is_empty(value: object) -> bool:
+    """Identifica valores vazios e NaN vindos dos CSVs."""
+    return value is None or value == "" or bool(pd.isna(value))
+
+
 def _normalize_int(value: object) -> int | None:
-    """Converte valores numéricos em inteiros sem deixar vazios como strings."""
-    if value is None or value == "":
-        return None
-    if isinstance(value, (int, float)):
-        return int(value)
-    if str(value).strip() == "":
+    """Converte um valor numérico do CSV para inteiro, preservando valores vazios."""
+    if _is_empty(value):
         return None
     return int(float(str(value).strip()))
 
 
 def _normalize_float(value: object) -> float | None:
-    """Converte strings numéricas em floats confiáveis."""
-    if value is None or value == "":
+    """Converte um valor numérico do CSV para float, preservando valores vazios."""
+    if _is_empty(value):
         return None
-    if isinstance(value, (int, float)):
-        return float(value)
     return float(str(value).strip())
 
 
+def _normalize_text(value: object) -> str | None:
+    """Converte um campo textual para string ou None, sem alterar seu conteúdo."""
+    if _is_empty(value):
+        return None
+    return str(value)
+
+
 def _parse_payment(raw_value: object) -> tuple[str | None, int | None]:
-    """Extrai tipo de pagamento e número de parcelas quando a origem vem em formato textual."""
-    if raw_value is None or raw_value == "":
+    """Separa meio de pagamento e parcelas do formato combinado presente no CSV."""
+    payment = _normalize_text(raw_value)
+    if payment is None:
         return None, None
-    text = str(raw_value).strip()
-    if "_" in text:
-        payment_type, installments_raw = text.split("_", 1)
-        installments = installments_raw.replace("x", "")
-        try:
-            return payment_type, int(installments)
-        except ValueError:
-            return payment_type, None
-    return text, None
+    if "_" not in payment:
+        return payment, None
+
+    payment_type, installments_raw = payment.split("_", maxsplit=1)
+    installments_text = installments_raw.removesuffix("x")
+    try:
+        return payment_type, int(installments_text)
+    except ValueError as exc:
+        raise ValueError(f"Formato de pagamento inválido no CSV: {payment!r}") from exc
 
 
-def _create_store_tables(conn: sqlite3.Connection) -> None:
-    """Cria as tabelas da loja conforme o schema do projeto."""
-    conn.executescript(
+def _read_sources(raw_dir: Path) -> dict[str, pd.DataFrame]:
+    """Lê todos os CSVs e valida os campos estruturais antes de alterar o banco."""
+    frames: dict[str, pd.DataFrame] = {}
+    for table, filename in CSV_FILES.items():
+        path = raw_dir / filename
+        if not path.is_file():
+            raise FileNotFoundError(f"CSV obrigatório não encontrado: {path}")
+        frames[table] = pd.read_csv(path)
+    return frames
+
+
+def _validate_date(value: object, *, field: str, row_number: int) -> str | None:
+    """Valida e retorna uma data ISO textual do CSV."""
+    text = _normalize_text(value)
+    if text is None:
+        return None
+    try:
+        date.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(
+            f"Data inválida no campo {field}, linha {row_number}: {text!r}"
+        ) from exc
+    return text
+
+
+def _schema_statements(schema: str) -> list[str]:
+    """Divide o schema estático em comandos SQL individuais para manter a transação."""
+    return [statement.strip() for statement in schema.split(";") if statement.strip()]
+
+
+def _ensure_conversation_columns(conn: sqlite3.Connection) -> None:
+    """Adiciona os campos de resumo a uma tabela de conversas preexistente sem apagar seus dados."""
+    columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(conversations)").fetchall()
+    }
+    if "summary" not in columns:
+        conn.execute("ALTER TABLE conversations ADD COLUMN summary TEXT")
+    if "summarized_until_message_id" not in columns:
+        conn.execute(
+            "ALTER TABLE conversations ADD COLUMN summarized_until_message_id INTEGER"
+        )
+
+
+def _insert_sources(
+    conn: sqlite3.Connection, frames: dict[str, pd.DataFrame]
+) -> None:
+    """Carrega os registros das seis tabelas da loja com colunas explicitamente mapeadas."""
+    for row in _clean_records(frames["categories"]):
+        conn.execute(
+            "INSERT INTO categories (category_id, name, description) VALUES (?, ?, ?)",
+            (
+                _normalize_int(row["category_id"]),
+                _normalize_text(row.get("name")),
+                _normalize_text(row.get("description")),
+            ),
+        )
+
+    for row_number, row in enumerate(_clean_records(frames["products"]), start=2):
+        specs_json = _normalize_text(row.get("specs"))
+        if specs_json is not None:
+            try:
+                parsed_specs = json.loads(specs_json)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"JSON inválido em products.specs, linha {row_number}"
+                ) from exc
+            if not isinstance(parsed_specs, dict):
+                raise ValueError(
+                    f"products.specs deve conter um objeto JSON, linha {row_number}"
+                )
+        conn.execute(
+            """
+            INSERT INTO products (
+                product_id, name, category_id, price_brl, stock_quantity, status,
+                specs_json, description_raw, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                _normalize_int(row["product_id"]),
+                _normalize_text(row.get("name")),
+                _normalize_int(row["category_id"]),
+                _normalize_float(row["price_brl"]),
+                _normalize_int(row["stock_quantity"]),
+                _normalize_text(row.get("status")),
+                specs_json,
+                _normalize_text(row.get("description")),
+                _validate_date(row.get("created_at"), field="products.created_at", row_number=row_number),
+            ),
+        )
+
+    for row in _clean_records(frames["promotions"]):
+        conn.execute(
+            """
+            INSERT INTO promotions (
+                promotion_id, product_id, discount_percent, label, is_active
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                _normalize_int(row["promotion_id"]),
+                _normalize_int(row["product_id"]),
+                _normalize_float(row["discount_percent"]),
+                _normalize_text(row.get("description")),
+                _normalize_int(row["is_active"]),
+            ),
+        )
+
+    for row in _clean_records(frames["customers"]):
+        conn.execute(
+            """
+            INSERT INTO customers (customer_id, name, phone, email, city)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                _normalize_int(row["customer_id"]),
+                _normalize_text(row.get("name")),
+                _normalize_text(row.get("phone")),
+                _normalize_text(row.get("email")),
+                _normalize_text(row.get("city")),
+            ),
+        )
+
+    for row_number, row in enumerate(_clean_records(frames["orders"]), start=2):
+        payment_type, installments = _parse_payment(row.get("payment_method"))
+        conn.execute(
+            """
+            INSERT INTO orders (
+                order_id, customer_id, order_date, status, total_brl, payment_type,
+                installments, tracking_code, estimated_delivery, notes,
+                total_needs_review
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            (
+                _normalize_int(row["order_id"]),
+                _normalize_int(row["customer_id"]),
+                _validate_date(row.get("order_date"), field="orders.order_date", row_number=row_number),
+                _normalize_text(row.get("status")),
+                _normalize_float(row["total_brl"]),
+                payment_type,
+                installments,
+                _normalize_text(row.get("tracking_code")),
+                _validate_date(
+                    row.get("estimated_delivery"),
+                    field="orders.estimated_delivery",
+                    row_number=row_number,
+                ),
+                _normalize_text(row.get("notes")),
+            ),
+        )
+
+    for row in _clean_records(frames["order_items"]):
+        conn.execute(
+            """
+            INSERT INTO order_items (order_id, product_id, quantity)
+            VALUES (?, ?, ?)
+            """,
+            (
+                _normalize_int(row["order_id"]),
+                _normalize_int(row["product_id"]),
+                _normalize_int(row["quantity"]),
+            ),
+        )
+
+
+def _mark_orders_for_review(conn: sqlite3.Connection) -> None:
+    """Marca pedidos cujo total diverge em mais de um centavo da soma pelos preços atuais."""
+    orders = conn.execute(
+        "SELECT order_id, total_brl FROM orders ORDER BY order_id"
+    ).fetchall()
+    for order_id, total_brl in orders:
+        items = conn.execute(
+            """
+            SELECT p.price_brl, oi.quantity
+            FROM order_items AS oi
+            JOIN products AS p ON p.product_id = oi.product_id
+            WHERE oi.order_id = ?
+            """,
+            (order_id,),
+        ).fetchall()
+        item_total = sum(
+            (
+                Decimal(str(price)) * Decimal(quantity)
+                for price, quantity in items
+            ),
+            start=Decimal("0"),
+        )
+        needs_review = abs(Decimal(str(total_brl)) - item_total) > Decimal("0.01")
+        conn.execute(
+            "UPDATE orders SET total_needs_review = ? WHERE order_id = ?",
+            (int(needs_review), order_id),
+        )
+
+
+def _report_anomalies(conn: sqlite3.Connection) -> None:
+    """Imprime as anomalias de disponibilidade e promoções ativas previstas pelo plano."""
+    anomalies = conn.execute(
         """
-        CREATE TABLE categories (
-            category_id INTEGER PRIMARY KEY,
-            name TEXT,
-            description TEXT
-        );
-
-        CREATE TABLE products (
-            product_id INTEGER PRIMARY KEY,
-            name TEXT,
-            category_id INTEGER,
-            price_brl REAL CHECK(price_brl > 0),
-            stock_quantity INTEGER CHECK(stock_quantity >= 0),
-            status TEXT CHECK(status IN ('active', 'discontinued', 'coming_soon')),
-            specs_json TEXT,
-            description_raw TEXT,
-            created_at TEXT,
-            FOREIGN KEY (category_id) REFERENCES categories(category_id)
-        );
-
-        CREATE TABLE promotions (
-            promotion_id INTEGER PRIMARY KEY,
-            product_id INTEGER,
-            discount_percent REAL CHECK(discount_percent >= 1 AND discount_percent <= 100),
-            label TEXT,
-            is_active INTEGER CHECK(is_active IN (0, 1)),
-            FOREIGN KEY (product_id) REFERENCES products(product_id)
-        );
-
-        CREATE TABLE customers (
-            customer_id INTEGER PRIMARY KEY,
-            name TEXT,
-            phone TEXT,
-            email TEXT,
-            city TEXT
-        );
-
-        CREATE TABLE orders (
-            order_id INTEGER PRIMARY KEY,
-            customer_id INTEGER,
-            order_date TEXT,
-            status TEXT CHECK(status IN ('pending', 'confirmed', 'shipped', 'delivered', 'cancelled')),
-            total_brl REAL,
-            payment_type TEXT,
-            installments INTEGER,
-            tracking_code TEXT,
-            estimated_delivery TEXT,
-            notes TEXT,
-            total_needs_review INTEGER DEFAULT 0,
-            FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
-        );
-
-        CREATE TABLE order_items (
-            order_id INTEGER,
-            product_id INTEGER,
-            quantity INTEGER CHECK(quantity > 0),
-            PRIMARY KEY (order_id, product_id),
-            FOREIGN KEY (order_id) REFERENCES orders(order_id),
-            FOREIGN KEY (product_id) REFERENCES products(product_id)
-        );
+        SELECT product_id, status, stock_quantity
+        FROM products
+        WHERE (product_id = 96 AND status = 'active' AND stock_quantity = 0)
+           OR (product_id = 136 AND status = 'discontinued' AND stock_quantity > 0)
+           OR (product_id = 130 AND status = 'coming_soon' AND stock_quantity > 0)
+        ORDER BY product_id
         """
-    )
+    ).fetchall()
+    duplicates = conn.execute(
+        """
+        SELECT product_id, COUNT(*) AS active_promotion_count
+        FROM promotions
+        WHERE is_active = 1
+        GROUP BY product_id
+        HAVING COUNT(*) > 1
+        ORDER BY product_id
+        """
+    ).fetchall()
+
+    print("Anomalias de disponibilidade:")
+    for product_id, status, stock_quantity in anomalies:
+        print(
+            f"- Produto {product_id}: status={status}, estoque={stock_quantity}"
+        )
+    if not anomalies:
+        print("- Nenhuma")
+
+    print("Produtos com mais de uma promoção ativa:")
+    for product_id, count in duplicates:
+        print(f"- Produto {product_id}: {count} promoções ativas")
+    if not duplicates:
+        print("- Nenhum")
 
 
 def build_database() -> None:
-    """Cria ou recria o banco SQLite da loja com as tabelas da loja apenas, preservando idempotência e a FK de `conversations` ao recriar `customers`."""
+    """Recria somente as tabelas da loja, preserva conversas e valida os dados carregados."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    raw_dir = RAW_DIR
+    if not RAW_DIR.is_dir():
+        raise FileNotFoundError(f"Diretório de CSVs não encontrado: {RAW_DIR}")
 
-    if not raw_dir.exists():
-        raise FileNotFoundError(f"Diretório de CSVs não encontrado: {raw_dir}")
-
+    frames = _read_sources(RAW_DIR)
+    schema = SCHEMA_PATH.read_text(encoding="utf-8")
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("PRAGMA foreign_keys = OFF")
-
     try:
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS conversations (
-                id TEXT PRIMARY KEY,
-                started_at TEXT,
-                verified_customer_id INTEGER,
-                FOREIGN KEY (verified_customer_id) REFERENCES customers(customer_id)
-            );
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("BEGIN")
 
-            CREATE TABLE IF NOT EXISTS messages (
-                id TEXT PRIMARY KEY,
-                conversation_id TEXT,
-                role TEXT,
-                content TEXT,
-                provider TEXT,
-                created_at TEXT,
-                FOREIGN KEY (conversation_id) REFERENCES conversations(id)
-            );
+        for statement in _schema_statements(schema):
+            conn.execute(statement)
+        _ensure_conversation_columns(conn)
 
-            CREATE TABLE IF NOT EXISTS tool_calls (
-                id TEXT PRIMARY KEY,
-                message_id TEXT,
-                tool_name TEXT,
-                args_json TEXT,
-                ok INTEGER,
-                created_at TEXT,
-                FOREIGN KEY (message_id) REFERENCES messages(id)
-            );
-            """
-        )
-
-        conn.execute("DELETE FROM tool_calls")
-        conn.execute("DELETE FROM messages")
-        conn.execute("DELETE FROM conversations")
-
-        for table in [
-            "order_items",
-            "orders",
-            "promotions",
-            "products",
-            "customers",
-            "categories",
-        ]:
+        for table in STORE_TABLES:
             conn.execute(f"DROP TABLE IF EXISTS {table}")
+        for statement in _schema_statements(schema):
+            conn.execute(statement)
 
-        _create_store_tables(conn)
+        _insert_sources(conn, frames)
+        _mark_orders_for_review(conn)
 
-        categories = pd.read_csv(raw_dir / "desafio_tecnico_ai_eng - categories.csv")
-        for row in _clean_records(categories):
-            conn.execute(
-                "INSERT INTO categories (category_id, name, description) VALUES (?, ?, ?)",
-                (
-                    _normalize_int(row["category_id"]),
-                    row.get("name"),
-                    row.get("description"),
-                ),
+        foreign_key_errors = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if foreign_key_errors:
+            raise sqlite3.IntegrityError(
+                f"Falha de integridade referencial: {foreign_key_errors}"
             )
-
-        products = pd.read_csv(raw_dir / "desafio_tecnico_ai_eng - products.csv")
-        for row in _clean_records(products):
-            conn.execute(
-                """
-                INSERT INTO products (
-                    product_id, name, category_id, price_brl, stock_quantity, status,
-                    specs_json, description_raw, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    _normalize_int(row["product_id"]),
-                    row.get("name"),
-                    _normalize_int(row["category_id"]),
-                    _normalize_float(row["price_brl"]),
-                    _normalize_int(row["stock_quantity"]),
-                    row.get("status"),
-                    row.get("specs"),
-                    row.get("description"),
-                    row.get("created_at"),
-                ),
-            )
-
-        promotions = pd.read_csv(raw_dir / "desafio_tecnico_ai_eng - promotions.csv")
-        for row in _clean_records(promotions):
-            conn.execute(
-                "INSERT INTO promotions (promotion_id, product_id, discount_percent, label, is_active) VALUES (?, ?, ?, ?, ?)",
-                (
-                    _normalize_int(row["promotion_id"]),
-                    _normalize_int(row["product_id"]),
-                    _normalize_float(row["discount_percent"]),
-                    row.get("description"),
-                    _normalize_int(row["is_active"]),
-                ),
-            )
-
-        customers = pd.read_csv(raw_dir / "desafio_tecnico_ai_eng - customers.csv")
-        for row in _clean_records(customers):
-            conn.execute(
-                "INSERT INTO customers (customer_id, name, phone, email, city) VALUES (?, ?, ?, ?, ?)",
-                (
-                    _normalize_int(row["customer_id"]),
-                    row.get("name"),
-                    row.get("phone"),
-                    row.get("email"),
-                    row.get("city"),
-                ),
-            )
-
-        orders = pd.read_csv(raw_dir / "desafio_tecnico_ai_eng - orders.csv")
-        for row in _clean_records(orders):
-            payment_type, installments = _parse_payment(row.get("payment_method"))
-            conn.execute(
-                """
-                INSERT INTO orders (
-                    order_id, customer_id, order_date, status, total_brl, payment_type,
-                    installments, tracking_code, estimated_delivery, notes, total_needs_review
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    _normalize_int(row["order_id"]),
-                    _normalize_int(row["customer_id"]),
-                    row.get("order_date"),
-                    row.get("status"),
-                    _normalize_float(row["total_brl"]),
-                    payment_type,
-                    installments,
-                    row.get("tracking_code"),
-                    row.get("estimated_delivery"),
-                    row.get("notes"),
-                    0,
-                ),
-            )
-
-        order_items = pd.read_csv(raw_dir / "desafio_tecnico_ai_eng - order_items.csv")
-        for row in _clean_records(order_items):
-            conn.execute(
-                "INSERT INTO order_items (order_id, product_id, quantity) VALUES (?, ?, ?)",
-                (
-                    _normalize_int(row["order_id"]),
-                    _normalize_int(row["product_id"]),
-                    _normalize_int(row["quantity"]),
-                ),
-            )
-
-        conn.execute("PRAGMA foreign_keys = ON")
         conn.commit()
+        conn.execute("PRAGMA foreign_keys = ON")
+        _report_anomalies(conn)
     except Exception:
         conn.rollback()
-        conn.execute("PRAGMA foreign_keys = ON")
         raise
     finally:
         conn.close()
