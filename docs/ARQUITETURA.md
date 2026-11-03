@@ -33,7 +33,7 @@ flowchart LR
 3. As definições das tools são enviadas separadamente; as mensagens seguem a ordem: persona, regras e manual → resumo contextual (quando houver) → histórico recente → mensagem nova.
 4. `llm.py` chama o provedor principal via cliente `openai` configurado com o `base_url` correspondente.
 5. Se houver 429, timeout ou erro 5xx, o agente tenta o provedor reserva. Erros de tools e validação não acionam fallback.
-6. O modelo pode solicitar uma tool. O dispatcher valida os argumentos e executa consultas de leitura no SQLite ou cálculo determinístico no código.
+6. O modelo pode solicitar uma tool. `agent.py` valida os argumentos contra schemas Pydantic, injeta internamente o ID da conversa nas ferramentas de pedido e executa consultas de leitura no SQLite ou cálculo determinístico no código. Erros conhecidos de validação/execução retornam uma estrutura segura ao modelo.
 7. Uma pergunta sobre horário pode usar `horario_loja()`; a data e hora de referência vêm de `agora()` no fuso `America/Campo_Grande`.
 8. Perguntas de parcelamento usam `simular_parcelamento()`; o LLM interpreta o resultado e não calcula as parcelas mentalmente.
 9. Pedidos de acessórios são redirecionados usando somente os nomes e sites constantes em `data/processed/lojas_parceiras.json`, sem afirmar parceria real.
@@ -47,7 +47,7 @@ flowchart LR
 - `schemas.py`: modelos Pydantic para argumentos das tools.
 - `prompts.py`: persona, regras, fora de escopo, formato e composição do resumo/histórico no contexto enviado ao modelo.
 - `llm.py`: cliente comum do pacote `openai`, `base_url` por provedor e fallback.
-- `agent.py`: loop limitado de tool calling e resposta.
+- `agent.py`: loop limitado de tool calling e resposta final, com interface de modelo injetável para testes independentes dos provedores.
 - `intent.py`: classificação por regras com múltiplos rótulos e LLM apenas em caso de dúvida.
 - `policies.py`: único acesso ao manual por `get_policy_context()`; políticas são mantidas em `data/processed/politicas.md`.
 - `memory.py`: criação de conversas, gravação e recuperação isolada de mensagens/tool calls, redação de argumentos sensíveis e coordenação de resumos por callback injetável.
@@ -89,6 +89,7 @@ O modelo inicial é Gemini Flash (`gemini-2.5-flash`) e o reserva é Groq (`open
 - Os cálculos de parcelamento ficam na tool para que o LLM não invente valores nem calcule condições de cabeça.
 - A lista de lojas para acessórios é uma lista de exemplo, não uma afirmação de parceria comercial.
 - A ferramenta de LLM mantém um único contrato; a exceção prevista é migrar apenas Gemini para SDK nativo se o endpoint compatível falhar.
+- O loop permite até cinco rodadas de tools e, em seguida, uma chamada final sem tools; se o modelo insistir em pedir ferramentas ou não retornar texto, usa uma resposta segura fixa.
 
 ## Em aberto para validação
 

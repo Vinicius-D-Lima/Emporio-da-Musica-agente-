@@ -2,6 +2,8 @@
 
 # Decisões do projeto
 
+As decisões registradas pelo usuário e os motivos informados durante as conversas ficam em [DECISOES_DO_USUARIO.md](./DECISOES_DO_USUARIO.md). Este documento mantém as decisões técnicas consolidadas do projeto.
+
 ## Decididas
 
 | Decisão | Motivo |
@@ -23,6 +25,9 @@
 | Resumir após mais de 20 mensagens não resumidas, preservando as 10 mais recentes; o resumo é gerado por callback injetável e atualizado somente após sucesso. | Mantém contexto recente, limita o tamanho do histórico e preserva todas as mensagens se o provedor falhar. |
 | Redigir e-mails e telefones nos argumentos de chamadas de tools e textos de mensagens antes de retorná-los ao histórico ou ao resumidor. | Reduz a exposição e a retenção desnecessária de dados pessoais no contexto do agente. |
 | Manter o prompt estático de persona/regras/manual antes do resumo e do histórico; inserir o resumo como contexto delimitado e não como novas instruções. | Preserva a ordem definida, facilita o reaproveitamento do prefixo estático e reduz o risco de instruções citadas no resumo alterarem as regras do agente. |
+| O loop principal usa uma função de modelo injetável, registra schemas de tools e valida chamadas com Pydantic; o provedor real permanece separado. | Permite testar function calling sem credenciais e manter o acoplamento com provedor no módulo LLM. |
+| Limitar a cinco rodadas de tool calling, permitir uma chamada final sem tools e usar resposta segura se o modelo persistir em chamar ferramenta ou não produzir texto. | Limita consumo e ciclos, mantendo oportunidade de uma resposta natural sem ultrapassar o teto de execução de tools. |
+| Erros conhecidos de ferramentas são devolvidos ao modelo como estrutura segura e registrados como falha; detalhes internos e valores sensíveis não são enviados. | Permite tentativa de recuperação sem expor argumentos ou detalhes operacionais. |
 | `total_brl` é o valor oficial; divergências marcam `total_needs_review` e encaminham o caso à equipe. | O total do pedido não deve ser substituído por uma estimativa com preço atual. |
 | A descrição original do produto nunca é enviada ao modelo. | Há inconsistências entre descrições, nomes e especificações dos dados. |
 | Cliente é identificado por número do pedido e e-mail; `customer_id` verificado fica na sessão. | A identidade não deve vir como argumento do modelo. |
