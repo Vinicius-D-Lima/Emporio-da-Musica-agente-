@@ -145,9 +145,15 @@ Commit sugerido: `feat(intent): classificador multirrótulo por regras`
 
 ## Passo 11 — Agente loop principal
 
-Critério de aceite:
-- `agent.py` executa loop de mensagem → tools → resposta;
-- ferramentas e erros de execução são tratados sem derrubar o processo.
+- [x] `agent.py` executa o loop mensagem → modelo → tools → resposta final por meio de um modelo injetável;
+- [x] todas as seis tools têm definição JSON Schema e dispatcher com validação Pydantic; `conversa_id` é injetado internamente nas tools de pedido e não é argumento do modelo;
+- [x] erros conhecidos de tools retornam estruturas seguras ao modelo e são registrados; argumentos persistidos passam pela redação da memória;
+- [x] limita chamadas a cinco rodadas de tools; permite uma chamada final sem tools e usa resposta segura se não houver texto válido ou o modelo tentar outra tool;
+- [x] histórico é persistido e resumido antes de construir o contexto, quando aplicável.
+
+O provedor real Gemini/Groq permanece pendente no Passo 7. O loop pode ser testado agora com uma função de modelo injetada, sem chaves nem requisições externas.
+
+Commit sugerido: `feat(agent): loop principal e function calling`
 
 ## Passo 12 — CLI e interface
 

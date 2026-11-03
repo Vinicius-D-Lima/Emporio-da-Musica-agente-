@@ -16,6 +16,8 @@
 
 O padrão é Gemini Flash (`gemini-2.5-flash`) e o reserva é Groq (`openai/gpt-oss-120b`). A integração prevista usa o pacote `openai`, configurando `base_url` conforme o provedor. Preencha `GEMINI_API_KEY` e `GROQ_API_KEY` no `.env`; não coloque chaves reais no repositório. `REFERENCE_DATETIME` define a referência no fuso `America/Campo_Grande` e, se necessário, pode ser alterada. Se omitida, o relógio atual é usado.
 
+O loop principal e o function calling podem ser testados com uma função de modelo injetada em `responder_mensagem()`, sem chaves nem chamadas externas. A ligação com Gemini/Groq ainda depende da implementação do Passo 7. Para manter uma conversa entre mensagens, crie uma conversa com `memory.criar_conversa()` e passe o mesmo `conversa_id` às chamadas de `responder_mensagem()`.
+
 ## Decisões técnicas
 
 ### Framework/abordagem do agente
