@@ -77,14 +77,17 @@ Commit sugerido: `feat(db): conexões leitura/escrita e authorizer`
 
 Commit sugerido: `feat(tools): busca e detalhes de produtos`
 
-## Passo 5 — Tools de promoção e pedido
+## Passo 5 — Promoções e preço final
 
-Critério de aceite:
-- `promocoes_ativas` lista promoções elegíveis;
-- `verificar_cliente` valida pedido + e-mail;
-- `status_pedido` consulta status e total_brl apenas para cliente correto.
-- A regra de duas promoções ativas para o mesmo produto escolhe a de maior desconto.
-- O parcelamento será centralizado na tool planejada `simular_parcelamento`, seguindo §3.1; não deixar o LLM calcular valores.
+- [x] somente promoções com `is_active = 1` e produto existente são consideradas;
+- [x] os preços promocionais são arredondados para duas casas e usam o maior desconto sem acumular;
+- [x] sem promoção, o produto 95 mantém o preço de R$ 2.199,00 e tem PIX de R$ 2.089,05;
+- [x] com promoção, o valor PIX não recebe desconto adicional;
+- [x] promoções inativas não aparecem, incluindo as do produto 96;
+- [x] o relatório do `build_db` identifica produtos com múltiplas promoções ativas;
+- [x] `tests/test_tools.py` valida preços reais e o caso sintético de promoções duplicadas.
+
+Commit sugerido: `feat(tools): promoções e cálculo de preço final`
 
 ## Passo 6 — Segurança e remoção de vazamentos
 

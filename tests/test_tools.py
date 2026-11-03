@@ -11,8 +11,8 @@ import pytest
 from pydantic import ValidationError
 
 from emporio_agent import db
-from emporio_agent.schemas import BuscarProdutosArgs
-from emporio_agent.tools import products
+from emporio_agent.schemas import BuscarProdutosArgs, PromocoesAtivasArgs
+from emporio_agent.tools import products, promotions
 from scripts import build_db
 
 
@@ -192,7 +192,167 @@ def test_detalhes_produto_inexistente_retorna_nao_encontrado(
     }
 
 
-@pytest.mark.skip(reason="Passo 5")
-def test_promocoes_ativas_verificar_cliente_e_status_pedido_processam_regras_de_negocio():
-    """Critério de aceite do Passo 5: promoções ativas, verificação de cliente e status do pedido obedecem as regras de negócio e retornam estrutura padronizada."""
+@pytest.mark.parametrize(
+    ("product_id", "preco_original", "desconto", "preco_final"),
+    [
+        (127, 359.0, 10.0, 323.10),
+        (121, 549.0, 20.0, 439.20),
+        (90, 2399.0, 18.0, 1967.18),
+        (94, 5999.0, 8.0, 5519.08),
+    ],
+)
+def test_promocoes_ativas_calculam_precos_finais(
+    banco_catalogo: Path,
+    product_id: int,
+    preco_original: float,
+    desconto: float,
+    preco_final: float,
+) -> None:
+    resultado = promotions.promocoes_ativas(product_id=product_id)
+
+    assert resultado["status"] == "success"
+    assert resultado["total"] == 1
+    promocao = resultado["products"][0]
+    assert promocao["product_id"] == product_id
+    assert promocao["original_price_brl"] == preco_original
+    assert promocao["discount_percent"] == desconto
+    assert promocao["final_price_brl"] == preco_final
+    assert promocao["pix_price_brl"] == preco_final
+    assert promocao["pix_discount_applied"] is False
+    assert promocao["promotion"]["is_active"] is True
+    assert "description_raw" not in promocao
+
+    print(
+        f"\n[TESTE] Promoção do produto {product_id}: "
+        f"R$ {preco_original:.2f} - {desconto:g}% = R$ {preco_final:.2f}; "
+        "PIX sem desconto adicional"
+    )
+
+
+def test_lista_apenas_promocoes_ativas_de_produtos_existentes(
+    banco_catalogo: Path,
+) -> None:
+    resultado = promotions.promocoes_ativas(limit=10)
+
+    assert resultado["status"] == "success"
+    assert resultado["total"] == 4
+    assert [produto["product_id"] for produto in resultado["products"]] == [
+        90,
+        94,
+        121,
+        127,
+    ]
+    assert all(
+        produto["promotion"]["is_active"] is True
+        and produto["product_id"] is not None
+        for produto in resultado["products"]
+    )
+    assert all(produto["product_id"] != 96 for produto in resultado["products"])
+
+
+def test_produto_sem_promocao_retorna_preco_de_tabela_e_pix(
+    banco_catalogo: Path,
+) -> None:
+    resultado = promotions.promocoes_ativas(product_id=95)
+
+    assert resultado["status"] == "success"
+    assert resultado["total"] == 1
+    produto = resultado["products"][0]
+    assert produto["product_id"] == 95
+    assert produto["original_price_brl"] == 2199.0
+    assert produto["promotion"] is None
+    assert produto["final_price_brl"] == 2199.0
+    assert produto["pix_price_brl"] == 2089.05
+    assert produto["pix_discount_applied"] is True
+
+
+def test_promocoes_inativas_nao_aparecem_nem_no_filtro_por_produto(
+    banco_catalogo: Path,
+) -> None:
+    resultado_lista = promotions.promocoes_ativas()
+    resultado_produto = promotions.promocoes_ativas(product_id=96)
+
+    assert 96 not in [produto["product_id"] for produto in resultado_lista["products"]]
+    assert resultado_produto["status"] == "success"
+    produto = resultado_produto["products"][0]
+    assert produto["promotion"] is None
+    assert produto["original_price_brl"] == 799.9
+    assert produto["pix_price_brl"] == round(799.9 * 0.95, 2)
+
+
+def test_promocoes_respeitam_limite_e_informam_total_real(
+    banco_catalogo: Path,
+) -> None:
+    resultado = promotions.promocoes_ativas(limit=2)
+
+    assert len(resultado["products"]) == 2
+    assert resultado["total"] == 4
+    assert resultado["limit"] == 2
+
+
+def test_produto_inexistente_nao_tem_promocao(
+    banco_catalogo: Path,
+) -> None:
+    resultado = promotions.promocoes_ativas(product_id=999)
+
+    assert resultado == {
+        "status": "not_found",
+        "message": "Produto não encontrado.",
+        "product_id": 999,
+    }
+
+
+@pytest.mark.parametrize(
+    "argumentos",
+    [
+        {"product_id": 0},
+        {"product_id": -1},
+        {"limit": 0},
+        {"limit": 51},
+    ],
+)
+def test_promocoes_validam_argumentos_com_pydantic(
+    argumentos: dict[str, int],
+) -> None:
+    with pytest.raises(ValidationError):
+        promotions.promocoes_ativas(**argumentos)
+
+
+def test_schema_promocoes_rejeita_argumentos_nao_declarados() -> None:
+    with pytest.raises(ValidationError):
+        PromocoesAtivasArgs.model_validate({"unexpected": True})
+
+
+def test_duas_promocoes_ativas_usam_maior_desconto_sem_acumular(
+    banco_catalogo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    db_path = tmp_path / "promocoes-duplicadas.db"
+    with sqlite3.connect(banco_catalogo) as origem, sqlite3.connect(db_path) as copia:
+        origem.backup(copia)
+
+    monkeypatch.setattr(db, "DB_PATH", db_path)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO promotions
+                (promotion_id, product_id, discount_percent, label, is_active)
+            VALUES (1000, 127, 25, 'Promoção sintética', 1)
+            """
+        )
+        conn.commit()
+        build_db._report_anomalies(conn)
+        relatorio = capsys.readouterr().out
+
+    resultado = promotions.promocoes_ativas(product_id=127)
+    promocao = resultado["products"][0]
+    assert promocao["discount_percent"] == 25
+    assert promocao["final_price_brl"] == 269.25
+    assert promocao["final_price_brl"] != round(359 * 0.9 * 0.75, 2)
+    assert "Produto 127: 2 promoções ativas" in relatorio
+    print("\n[TESTE] Promoções duplicadas: maior desconto (25%) aplicado sem acumular")
+
+
+@pytest.mark.skip(reason="Passo 6")
+def test_verificar_cliente_e_status_pedido_processam_regras_de_negocio():
+    """Critério do Passo 6: verificação de cliente e status do pedido obedecem as regras de negócio."""
     pass
