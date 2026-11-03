@@ -135,12 +135,13 @@ Commit sugerido: `feat(prompts): persona e contexto do agente`
 
 ## Passo 10 — Classificador de intenção
 
-Critério de aceite:
-- `classificar_intencao(msg)` retorna uma lista com zero ou mais rótulos;
-- rótulos iniciais: `dado_loja`, `politica`, `acessorio`, `fora_assunto`, `saudacao`; não criar `misto`;
-- regras são a primeira tentativa; LLM só é usado em caso de dúvida;
-- acessórios e assuntos fora do escopo são detectados e redirecionados;
-- acessórios citam somente nomes da lista de exemplo, sem alegar parceria real.
+- [x] `classificar_intencao(msg)` retorna uma lista determinística com zero ou mais rótulos;
+- [x] taxonomia limitada a `dado_loja`, `politica`, `acessorio`, `fora_assunto` e `saudacao`; não cria `misto`;
+- [x] regras são avaliadas primeiro; callback LLM opcional só é chamado quando nenhuma regra classifica, e sem callback retorna `[]`;
+- [x] saudação pode coexistir com a intenção principal; pedido de acessório retorna `acessorio` e `fora_assunto`;
+- [x] lista exemplificativa de lojas e orientação de redirecionamento permanecem na configuração/documentação e no prompt, sem afirmar parceria real.
+
+Commit sugerido: `feat(intent): classificador multirrótulo por regras`
 
 ## Passo 11 — Agente loop principal
 
