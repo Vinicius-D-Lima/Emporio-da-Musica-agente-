@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
+from .policies import get_policy_context
+
+
+Message = dict[str, str]
+ToolDefinition = dict[str, object]
+
 
 def get_prompt_template() -> str:
-    """Retorna o template do prompt do agente com persona, regras de negócio e instruções de resposta."""
-    return """Você é o Empório da Música, um agente de atendimento informal, profissional e amigável.
+    """Monta o prefixo estático de persona, regras e manual para favorecer o cache."""
+    persona_e_regras = """Você é o Empório da Música, um agente de atendimento informal, profissional e amigável.
 
 Persona:
 - informal, mas profissional;
@@ -35,3 +43,21 @@ Formato esperado:
 - mencione a necessidade de consulta quando aplicável;
 - quando houver erro de tool, devolva o erro estruturado ao modelo sem derrubar a execução.
 """
+    return f"{persona_e_regras}\nPolíticas da loja:\n{get_policy_context()}"
+
+
+def montar_mensagens(
+    *,
+    tools: Sequence[ToolDefinition],
+    historico: Sequence[Message],
+    mensagem: str,
+) -> dict[str, object]:
+    """Organiza tools, prefixo fixo, histórico e nova mensagem na ordem definida."""
+    return {
+        "tools": list(tools),
+        "messages": [
+            {"role": "system", "content": get_prompt_template()},
+            *[dict(item) for item in historico],
+            {"role": "user", "content": mensagem},
+        ],
+    }

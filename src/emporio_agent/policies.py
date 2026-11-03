@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+POLITICA_PATH = (
+    Path(__file__).resolve().parents[2] / "data" / "processed" / "politicas.md"
+)
+
 
 def get_policy_context() -> str:
-    """Retorna o conteúdo do manual de políticas em texto, sem ferramentas de recuperação por enquanto."""
-    from pathlib import Path
-    politica_path = Path(__file__).resolve().parents[2] / "data" / "processed" / "politicas.md"
-    return politica_path.read_text(encoding="utf-8")
+    """Retorna o manual limpo; este é o único ponto de leitura das políticas."""
+    return POLITICA_PATH.read_text(encoding="utf-8")

@@ -33,7 +33,7 @@ Os fatos de cache, limites e preços abaixo (conferido em 03/11/2026; reconferir
 | Gemini `gemini-2.5-flash` | O cache implícito vem habilitado nos modelos 2.5 e posteriores, mas não garante economia; o mínimo informado para 2.5 Flash é 2.048 tokens. Cache explícito é oferecido por `generateContent`, não pelo endpoint OpenAI-compatible. Os limites gratuitos por modelo não estão publicados na documentação consultada; o preço oficial do modelo escolhido ainda precisa ser confirmado. |
 | Groq `openai/gpt-oss-120b` | O cache automático atende a modelos GPT-OSS selecionados; o mínimo depende do modelo (128–1.024 tokens), expira após duas horas sem uso e reduz em 50% o custo dos tokens em cache. No plano gratuito, os limites de referência informados são 30 requisições/minuto, 1.000/dia, 8.000 tokens/minuto e 200.000 tokens/dia; os limites efetivos dependem da conta. |
 
-O nome do campo de tokens em cache do endpoint Gemini e a compatibilidade efetiva de tool calling dos endpoints ainda precisam de teste. Não há resultado de comparação de qualidade entre os provedores registrado nesta etapa: [PREENCHER: resultados da comparação, se testados].
+O nome do campo de tokens em cache do endpoint Gemini e a compatibilidade efetiva de tool calling dos endpoints ainda precisam de teste. A comparação de qualidade entre os provedores ainda não foi realizada.
 
 ### Interface de interação
 
@@ -55,11 +55,11 @@ SQLite com `sqlite3` puro em um único arquivo, sem ORM. Os dados são relaciona
 - Promoção exige registro ativo para o produto; informar preço original, percentual e preço final. PIX não acumula com promoção; em caso de duas promoções ativas, prevalece a de maior desconto.
 - Data/hora vem de `REFERENCE_DATETIME`, com fuso `America/Campo_Grande` e padrão `2026-03-23T10:00:00`; sem valor, usa-se o relógio atual. O expediente é de segunda a sexta, das 9h às 18h, e sábado, das 9h às 13h. Domingo e feriados não modelados são considerados fechados.
 
-O parcelamento segue a regra detalhada do §3.1: até 3x, cada parcela deve ser de pelo menos R$ 50; de 4x a 6x, R$ 80; de 7x a 12x, R$ 100. A tool planejada `simular_parcelamento` fará os cálculos no código para evitar erro matemático, condições inventadas e consumo de tokens com contas. O modelo interpreta e explica o resultado.
+O parcelamento segue a regra detalhada do §3.1: até 3x, cada parcela deve ser de pelo menos R$ 50; de 4x a 6x, R$ 80; de 7x a 12x, R$ 100. A tool `simular_parcelamento` calcula no código as opções de 1x a 12x, usando o preço do catálogo ou o preço promocional ativo. Recusa simular itens indisponíveis e não acumula desconto de PIX sobre promoção. O modelo interpreta e explica o resultado.
 
 ### Arquitetura de retrieval
 
-O manual fica no system prompt com prompt caching. A versão de referência tem 3.498 tokens; prompt direto evita recuperar o trecho errado, mantém as políticas disponíveis e permite tratar as contradições uma vez no texto limpo. No cenário hipotético de 8 mil clientes × 1.000 chamadas, repetir o manual pode pesar; o cache reaproveita o prefixo fixo, mas tem expiração, tamanho mínimo e regras que variam por provedor, e não elimina o uso da janela de contexto. O cálculo de custo deve ser refeito com o preço oficial do modelo escolhido. RAG híbrido (chunking por seção, BM25 + embeddings) fica como evolução se o manual chegar a 200 páginas ou mudar com frequência; `get_policy_context()` isola o acesso às políticas. A versão limpa do manual e sua contagem de tokens ainda devem ser preenchidas: [PREENCHER: contagem da versão limpa].
+O manual limpo fica no system prompt com prompt caching. O texto foi organizado em dez seções, parafraseado a partir do manual da loja e tem acesso isolado por `get_policy_context()` em `policies.py`. O arquivo tem 2.156 tokens em `cl100k_base` (sem contar persona e demais regras do prompt). Prompt direto evita recuperar o trecho errado, mantém as políticas disponíveis e permite tratar as contradições no texto limpo. No cenário hipotético de 8 mil clientes × 1.000 chamadas, repetir o manual pode pesar; o cache reaproveita o prefixo fixo, mas tem expiração, tamanho mínimo e regras que variam por provedor, e não elimina o uso da janela de contexto. O cálculo de custo deve ser refeito com o preço oficial do modelo escolhido. RAG híbrido (chunking por seção, BM25 + embeddings) fica como evolução se o manual chegar a 200 páginas ou mudar com frequência.
 
 ### Estratégia de prompt
 
@@ -99,10 +99,10 @@ O classificador começa com regras e pode recorrer ao LLM somente em caso de dú
 
 ## Uso de assistentes de código
 
-- Ferramentas: [PREENCHER: ferramentas utilizadas].
-- Como usei, por etapa: [PREENCHER: como usei, por etapa].
-- O que a IA errou e eu corrigi: [PREENCHER: o que a IA errou e eu corrigi].
-- O que não deleguei: [PREENCHER: o que não deleguei].
+- Ferramenta: GitHub Copilot no VS Code.
+- Como usei: avancei por passos, revisei o código e os testes; neste passo, forneci o manual e validei as decisões de parcelamento e indisponibilidade.
+- Ajustes que fiz: escolhi a regra detalhada do §3.1 diante da divergência com a tabela geral e defini que produtos indisponíveis não devem receber simulação.
+- Decisões que mantive: regras de negócio e contatos adotados foram definidos por mim, não inferidos pelo agente.
 
 O processo foi planejado em passos pequenos, com critérios de aceite e testes (ver `docs/PLANO_DE_PASSOS.md`); o registro real está em `docs/USO_DE_IA.md`.
 

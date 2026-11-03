@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class BuscarProdutosArgs(BaseModel):
@@ -72,3 +72,23 @@ class StatusPedidoArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     order_id: int = Field(ge=1)
+
+
+class SimularParcelamentoArgs(BaseModel):
+    """Argumentos para simular parcelas a partir de produto ou valor informado."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    product_id: int | None = Field(default=None, ge=1)
+    quantidade: int = Field(default=1, ge=1)
+    valor: float | None = Field(
+        default=None, gt=0, allow_inf_nan=False, description="Valor total em reais"
+    )
+
+    @model_validator(mode="after")
+    def validar_origem_do_preco(self) -> SimularParcelamentoArgs:
+        if (self.product_id is None) == (self.valor is None):
+            raise ValueError("Informe exatamente um entre product_id e valor.")
+        if self.valor is not None and self.quantidade != 1:
+            raise ValueError("quantidade só pode ser usada junto com product_id.")
+        return self

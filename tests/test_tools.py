@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import contextlib
+import importlib
 import io
 import sqlite3
+import re
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from emporio_agent import db
+from emporio_agent import db, policies, prompts
 from emporio_agent.schemas import BuscarProdutosArgs, PromocoesAtivasArgs
 from emporio_agent.tools import products, promotions
 from scripts import build_db
@@ -356,3 +358,168 @@ def test_duas_promocoes_ativas_usam_maior_desconto_sem_acumular(
 def test_verificar_cliente_e_status_pedido_processam_regras_de_negocio():
     """Critério do Passo 6: verificação de cliente e status do pedido obedecem as regras de negócio."""
     pass
+
+
+def _simular_parcelamento(**argumentos):
+    payments = importlib.import_module("emporio_agent.tools.payments")
+    return payments.simular_parcelamento(**argumentos)
+
+
+@pytest.mark.parametrize(
+    ("valor", "max_parcelas"),
+    [(359.0, 4), (159.9, 3), (120.0, 2), (49.0, 1)],
+)
+def test_simular_parcelamento_aplica_limites_do_manual(
+    valor: float, max_parcelas: int
+) -> None:
+    resultado = _simular_parcelamento(valor=valor)
+
+    assert resultado["status"] == "success"
+    assert resultado["total_brl"] == valor
+    assert resultado["max_installments"] == max_parcelas
+    assert len(resultado["installments"]) == 12
+    assert resultado["installments"][0] == {
+        "count": 1,
+        "amount_brl": round(valor, 2),
+        "minimum_installment_brl": 0,
+        "allowed": True,
+    }
+    assert all(
+        linha["allowed"] is (linha["count"] <= max_parcelas)
+        for linha in resultado["installments"]
+    )
+
+
+def test_tabela_de_parcelas_de_359_respeita_minimos_por_faixa() -> None:
+    resultado = _simular_parcelamento(valor=359.0)
+    parcelas = {linha["count"]: linha for linha in resultado["installments"]}
+
+    assert parcelas[3]["amount_brl"] == 119.67
+    assert parcelas[3]["minimum_installment_brl"] == 50
+    assert parcelas[3]["allowed"] is True
+    assert parcelas[4]["amount_brl"] == 89.75
+    assert parcelas[4]["minimum_installment_brl"] == 80
+    assert parcelas[4]["allowed"] is True
+    assert parcelas[5]["amount_brl"] == 71.8
+    assert parcelas[5]["allowed"] is False
+    assert parcelas[6]["amount_brl"] == 59.83
+    assert parcelas[6]["allowed"] is False
+    assert parcelas[7]["amount_brl"] == 51.29
+    assert parcelas[7]["minimum_installment_brl"] == 100
+    assert parcelas[7]["allowed"] is False
+
+
+def test_produto_usa_preco_promocional_sem_desconto_pix(
+    banco_catalogo: Path,
+) -> None:
+    resultado = _simular_parcelamento(product_id=127)
+
+    assert resultado["status"] == "success"
+    assert resultado["product_id"] == 127
+    assert resultado["quantity"] == 1
+    assert resultado["unit_price_brl"] == 323.1
+    assert resultado["total_brl"] == 323.1
+    assert resultado["price_source"] == "active_promotion"
+
+
+def test_produto_multiplica_preco_promocional_pela_quantidade(
+    banco_catalogo: Path,
+) -> None:
+    resultado = _simular_parcelamento(product_id=127, quantidade=2)
+
+    assert resultado["unit_price_brl"] == 323.1
+    assert resultado["quantity"] == 2
+    assert resultado["total_brl"] == 646.2
+
+
+def test_produto_sem_promocao_usa_preco_de_tabela_sem_desconto_pix(
+    banco_catalogo: Path,
+) -> None:
+    resultado = _simular_parcelamento(product_id=95)
+
+    assert resultado["unit_price_brl"] == 2199.0
+    assert resultado["total_brl"] == 2199.0
+    assert resultado["price_source"] == "catalog"
+    assert resultado["installments"][0]["amount_brl"] == 2199.0
+
+
+@pytest.mark.parametrize(
+    ("product_id", "availability"),
+    [
+        (96, "sem estoque no momento"),
+        (113, "saiu do catálogo"),
+        (130, "em breve"),
+        (136, "descontinuado"),
+    ],
+)
+def test_parcelamento_recusa_produto_indisponivel(
+    banco_catalogo: Path, product_id: int, availability: str
+) -> None:
+    resultado = _simular_parcelamento(product_id=product_id)
+
+    assert resultado == {
+        "status": "not_available",
+        "message": f"Produto {availability}; não é possível simular o parcelamento.",
+        "product_id": product_id,
+    }
+
+
+@pytest.mark.parametrize(
+    "argumentos",
+    [
+        {},
+        {"valor": 100, "product_id": 95},
+        {"valor": 0},
+        {"valor": -1},
+        {"valor": float("inf")},
+        {"product_id": 0},
+        {"product_id": 95, "quantidade": 0},
+    ],
+)
+def test_parcelamento_valida_argumentos(argumentos: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        _simular_parcelamento(**argumentos)
+
+
+def test_manual_tem_dez_secoes_sem_placeholders() -> None:
+    manual = policies.get_policy_context()
+
+    for secao in range(1, 11):
+        assert re.search(rf"(?m)^## §{secao}(?:\.|\s)", manual), f"Seção §{secao} ausente"
+    assert "[PREENCHER" not in manual
+    assert "Uma compra online pode ser devolvida em até sete dias corridos após o recebimento." in manual
+    assert "Reclamações são encaminhadas ao responsável, com retorno em até 24 horas úteis." in manual
+    assert "parcelas de duas ou três vezes devem ser de pelo menos R$ 50,00" in manual
+
+
+def test_manual_e_acessado_apenas_por_policies() -> None:
+    src = Path(__file__).resolve().parents[1] / "src"
+    acessos = [
+        caminho.relative_to(src)
+        for caminho in src.rglob("*.py")
+        if caminho.name != "policies.py" and "politicas.md" in caminho.read_text()
+    ]
+
+    assert acessos == []
+
+
+def test_montagem_de_mensagens_preserva_ordem_de_tools_manual_historico_e_nova_mensagem() -> None:
+    tools = [{"type": "function", "function": {"name": "simular_parcelamento"}}]
+    historico = [{"role": "assistant", "content": "Olá!"}]
+
+    requisicao = prompts.montar_mensagens(
+        tools=tools,
+        historico=historico,
+        mensagem="Pode parcelar?",
+    )
+
+    assert list(requisicao) == ["tools", "messages"]
+    assert requisicao["tools"] == tools
+    mensagens = requisicao["messages"]
+    assert mensagens[0]["role"] == "system"
+    assert "persona" in mensagens[0]["content"].lower()
+    assert policies.get_policy_context() in mensagens[0]["content"]
+    assert mensagens[1:] == [
+        historico[0],
+        {"role": "user", "content": "Pode parcelar?"},
+    ]

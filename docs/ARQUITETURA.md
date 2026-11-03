@@ -49,10 +49,10 @@ flowchart LR
 - `llm.py`: cliente comum do pacote `openai`, `base_url` por provedor e fallback.
 - `agent.py`: loop limitado de tool calling e resposta.
 - `intent.py`: classificação por regras com múltiplos rótulos e LLM apenas em caso de dúvida.
-- `policies.py`: único acesso ao manual por `get_policy_context()`.
+- `policies.py`: único acesso ao manual por `get_policy_context()`; políticas são mantidas em `data/processed/politicas.md`.
 - `memory.py`: gravação e recuperação do histórico e do resumo da conversa.
 - `cli.py`: interface de linha de comando.
-- `tools/`: tools de catálogo, promoções, pedidos e, conforme o plano, `simular_parcelamento`.
+- `tools/`: tools de catálogo, promoções, pedidos e parcelamento determinístico (`simular_parcelamento`).
 - `data/processed/lojas_parceiras.json`: lista explicitamente exemplificativa para redirecionamentos de acessórios.
 
 `horario_loja()` aplica o horário descrito no §2: segunda a sexta, das 09:00 às 18:00; sábado, das 09:00 às 13:00; domingo fechado. Feriados não são modelados.

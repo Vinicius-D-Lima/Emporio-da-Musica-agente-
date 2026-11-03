@@ -19,6 +19,7 @@
 | `installments` aceita NULL para PIX, débito e boleto. | Parcelas não se aplicam a esses meios de pagamento; a resposta indicará pagamento à vista. |
 | Parcelamento segue o §3.1: até 3x, parcela mínima de R$ 50; de 4x a 6x, R$ 80; de 7x a 12x, R$ 100. | A regra detalhada do manual foi escolhida para orientar os cálculos. |
 | A tool `simular_parcelamento` centralizará os cálculos no código. | Evita erros matemáticos, condições inventadas e consumo de tokens com contas. |
+| A simulação aceita um produto ou um valor explícito, nunca ambos; itens indisponíveis não são parcelados. | Mantém a origem do preço inequívoca e evita cotar produtos sem disponibilidade para venda. |
 | `total_brl` é o valor oficial; divergências marcam `total_needs_review` e encaminham o caso à equipe. | O total do pedido não deve ser substituído por uma estimativa com preço atual. |
 | A descrição original do produto nunca é enviada ao modelo. | Há inconsistências entre descrições, nomes e especificações dos dados. |
 | Cliente é identificado por número do pedido e e-mail; `customer_id` verificado fica na sessão. | A identidade não deve vir como argumento do modelo. |
