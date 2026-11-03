@@ -126,10 +126,12 @@ Commit sugerido: `feat(memory): persistência e resumo do histórico`
 
 ## Passo 9 — Prompts e persona
 
-Critério de aceite:
-- `prompts.py` organiza persona, regras, fora de escopo e formato de resposta;
-- manual e regras seguem a ordem tools → persona + manual → resumo e histórico → mensagem nova;
-- a tool `simular_parcelamento` deve ser usada em perguntas sobre parcelamento; o modelo não calcula parcelas de cabeça.
+- [x] `prompts.py` organiza persona, regras de negócio, fora de escopo e formato esperado;
+- [x] ferramentas são mantidas separadas das mensagens; o prefixo estático de persona e manual vem antes do resumo, do histórico e da mensagem atual;
+- [x] o resumo é apresentado como contexto, não como instruções; histórico recente e mensagem atual preservam sua ordem;
+- [x] perguntas sobre parcelamento instruem o modelo a chamar `simular_parcelamento`, sem calcular parcelas de cabeça.
+
+Commit sugerido: `feat(prompts): persona e contexto do agente`
 
 ## Passo 10 — Classificador de intenção
 

@@ -30,7 +30,7 @@ flowchart LR
 
 1. A mensagem chega pela CLI e é associada a uma conversa.
 2. `classificar_intencao()` aplica regras e, se persistir dúvida, pode recorrer ao LLM; uma mensagem pode receber vários rótulos.
-3. O agente monta o prompt na ordem: tools → persona e manual → resumo e histórico recente → mensagem nova.
+3. As definições das tools são enviadas separadamente; as mensagens seguem a ordem: persona, regras e manual → resumo contextual (quando houver) → histórico recente → mensagem nova.
 4. `llm.py` chama o provedor principal via cliente `openai` configurado com o `base_url` correspondente.
 5. Se houver 429, timeout ou erro 5xx, o agente tenta o provedor reserva. Erros de tools e validação não acionam fallback.
 6. O modelo pode solicitar uma tool. O dispatcher valida os argumentos e executa consultas de leitura no SQLite ou cálculo determinístico no código.
@@ -45,7 +45,7 @@ flowchart LR
 - `db.py`: conexões SQLite, authorizer e separação de leitura/escrita.
 - `schema.sql`: tabelas da loja e do agente, incluindo campos de resumo da conversa.
 - `schemas.py`: modelos Pydantic para argumentos das tools.
-- `prompts.py`: persona, regras, fora de escopo e formato de resposta.
+- `prompts.py`: persona, regras, fora de escopo, formato e composição do resumo/histórico no contexto enviado ao modelo.
 - `llm.py`: cliente comum do pacote `openai`, `base_url` por provedor e fallback.
 - `agent.py`: loop limitado de tool calling e resposta.
 - `intent.py`: classificação por regras com múltiplos rótulos e LLM apenas em caso de dúvida.

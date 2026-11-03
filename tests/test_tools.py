@@ -523,3 +523,47 @@ def test_montagem_de_mensagens_preserva_ordem_de_tools_manual_historico_e_nova_m
         historico[0],
         {"role": "user", "content": "Pode parcelar?"},
     ]
+
+
+def test_template_de_prompt_define_persona_regras_e_uso_obrigatorio_da_tool() -> None:
+    template = prompts.get_prompt_template()
+
+    assert "Persona:" in template
+    assert "Regras de negócio:" in template
+    assert "Fora de escopo:" in template
+    assert "Formato esperado:" in template
+    assert "chame `simular_parcelamento`" in template
+    assert "Nunca calcule parcelas mentalmente" in template
+    assert "Nunca revele ou confirme dados de outro cliente" in template
+    assert "Parafraseie o manual" in template
+    assert policies.get_policy_context() in template
+
+
+def test_montagem_de_mensagens_insere_resumo_antes_do_historico_e_da_nova_mensagem() -> None:
+    tools = [{"type": "function", "function": {"name": "simular_parcelamento"}}]
+    historico = [
+        {"role": "user", "content": "Procuro uma guitarra."},
+        {"role": "assistant", "content": "Vou consultar as opções."},
+    ]
+
+    requisicao = prompts.montar_mensagens(
+        tools=tools,
+        historico=historico,
+        resumo="A pessoa está procurando uma guitarra.",
+        mensagem="Pode parcelar?",
+    )
+
+    assert requisicao["tools"] == tools
+    mensagens = requisicao["messages"]
+    assert [mensagem["role"] for mensagem in mensagens] == [
+        "system",
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert policies.get_policy_context() in mensagens[0]["content"]
+    assert "Resumo contextual da conversa anterior" in mensagens[1]["content"]
+    assert "A pessoa está procurando uma guitarra." in mensagens[1]["content"]
+    assert mensagens[2:4] == historico
+    assert mensagens[-1] == {"role": "user", "content": "Pode parcelar?"}

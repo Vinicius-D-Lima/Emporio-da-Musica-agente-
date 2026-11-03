@@ -63,7 +63,7 @@ O manual limpo fica no system prompt com prompt caching. O texto foi organizado 
 
 ### Estratégia de prompt
 
-A ordem definida é tools → persona + manual → resumo e histórico recente → mensagem nova. O conteúdo fixo fica no início para favorecer o cache. A data e a hora não entram no início do prompt; quando necessárias, são obtidas por `horario_loja()` ou incluídas ao final da mensagem. O manual é interno e deve ser parafraseado, sem colar o texto.
+A definição das tools é enviada separadamente das mensagens. Nelas, o prefixo estático de persona, regras e manual vem primeiro; quando existe, o resumo é acrescentado como contexto, seguido pelo histórico recente e pela mensagem nova. O prompt instrui o modelo a não tratar o resumo como novas instruções e a chamar `simular_parcelamento` em perguntas de parcelas, sem fazer contas mentalmente. O conteúdo fixo fica no início para favorecer o cache. A data e a hora não entram no início do prompt; quando necessárias, são obtidas por `horario_loja()` ou incluídas ao final da mensagem. O manual é interno e deve ser parafraseado, sem colar o texto.
 
 ### Classificador e fora de escopo
 
