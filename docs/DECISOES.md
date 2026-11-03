@@ -39,7 +39,7 @@
 - Reconferir informações de cache, limites e preços dos provedores antes da entrega. Os limites gratuitos do Gemini não estão publicados na documentação consultada e o preço do modelo escolhido precisa de confirmação em fonte oficial.
 - Confirmar os contatos com o responsável caso o projeto represente uma loja real; a decisão documental não é confirmação oficial.
 - Substituir a lista de lojas de exemplo por uma lista autorizada, se vier a existir uma lista real de parceiras.
-- Alinhar `config.py` a `REFERENCE_DATETIME`, `agora()` e `horario_loja()` no passo de configuração; a implementação atual ainda usa `REFERENCE_DATE`.
+- `config.py` centraliza `REFERENCE_DATETIME`, `agora()`, `hoje()` e `loja_aberta()`; uma tool futura `horario_loja()` poderá apresentar esses dados ao cliente.
 - Propagar os novos campos de resumo do `schema.sql` ao build do banco quando o passo correspondente for autorizado; esta atualização não alterou `scripts/build_db.py` nem recriou o banco.
 - Preencher resultados de testes e registros pessoais de uso de assistentes nos locais `[PREENCHER]`.
 
