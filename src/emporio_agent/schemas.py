@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class BuscarProdutosArgs(BaseModel):
@@ -11,8 +11,24 @@ class BuscarProdutosArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     query: str | None = Field(default=None, description="Termo de busca do catálogo")
-    category_id: int | None = Field(default=None, description="Categoria do produto")
+    category_id: int | None = Field(default=None, ge=1, description="Categoria do produto")
+    preco_max: float | None = Field(
+        default=None,
+        gt=0,
+        allow_inf_nan=False,
+        description="Preço máximo inclusivo em reais",
+    )
     limit: int = Field(default=10, ge=1, le=50)
+
+    @field_validator("query")
+    @classmethod
+    def normalizar_query(cls, query: str | None) -> str | None:
+        if query is None:
+            return None
+        query = query.strip()
+        if not query:
+            raise ValueError("O termo de busca não pode ser vazio.")
+        return query
 
 
 class DetalhesProdutoArgs(BaseModel):

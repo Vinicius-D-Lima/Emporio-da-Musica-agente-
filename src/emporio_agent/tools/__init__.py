@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from .orders import status_pedido, verificar_cliente
+from .products import buscar_produtos, detalhes_produto
+from .promotions import promocoes_ativas
+
 __all__ = [
     "buscar_produtos",
     "detalhes_produto",

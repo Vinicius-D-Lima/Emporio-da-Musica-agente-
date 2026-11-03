@@ -63,12 +63,19 @@ Commit sugerido: `feat(db): conexões leitura/escrita e authorizer`
 - [x] `date.today()` e `datetime.now()` só são usados em `config.py`;
 - [x] os testes de configuração cobrem carregamento, fusos, validação e limites do expediente.
 
-## Passo 4 — Tools de catálogo e detalhes
+## Passo 4 — Schemas e tools de produto
 
-Critério de aceite:
-- `buscar_produtos` e `detalhes_produto` consultam `products` com filtros válidos;
-- campos sensíveis não são expostos;
-- resultados obedecem a regras de disponibilidade e promoção.
+- [x] argumentos de busca e detalhes são validados com Pydantic, incluindo `preco_max > 0`;
+- [x] consultas listam explicitamente as colunas e nunca leem ou retornam `description_raw`;
+- [x] specs retornadas limitam-se a cordas, eletrônica, escala e cor, e são omitidas para produtos 135 a 144;
+- [x] busca de violões até R$ 1.000 retorna os 12 disponíveis e exclui os produtos 96 e 113;
+- [x] busca por `gd20`, `GD-20` e `takamine gd20` encontra o produto 95;
+- [x] detalhes informam corretamente indisponibilidade, saída do catálogo, produto em breve e descontinuação;
+- [x] busca sem resultados retorna resposta estruturada;
+- [x] resultados são limitados sem perder o total real encontrado;
+- [x] `tests/test_tools.py` valida os critérios de produto acima.
+
+Commit sugerido: `feat(tools): busca e detalhes de produtos`
 
 ## Passo 5 — Tools de promoção e pedido
 
