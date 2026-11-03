@@ -14,7 +14,7 @@
 
 ### Provedor e configuração
 
-O padrão é Gemini Flash (`gemini-2.5-flash`) e o reserva é Groq (`openai/gpt-oss-120b`). A integração prevista usa o pacote `openai`, configurando `base_url` conforme o provedor. Preencha `GEMINI_API_KEY` e `GROQ_API_KEY` no `.env`; não coloque chaves reais no repositório. `REFERENCE_DATETIME` define a referência no fuso `America/Campo_Grande` e, se necessário, pode ser alterada.
+O padrão é Gemini Flash (`gemini-2.5-flash`) e o reserva é Groq (`openai/gpt-oss-120b`). A integração prevista usa o pacote `openai`, configurando `base_url` conforme o provedor. Preencha `GEMINI_API_KEY` e `GROQ_API_KEY` no `.env`; não coloque chaves reais no repositório. `REFERENCE_DATETIME` define a referência no fuso `America/Campo_Grande` e, se necessário, pode ser alterada. Se omitida, o relógio atual é usado.
 
 ## Decisões técnicas
 
@@ -53,7 +53,7 @@ SQLite com `sqlite3` puro em um único arquivo, sem ORM. Os dados são relaciona
 - A descrição original não é enviada ao modelo; somente uma lista permitida de especificações pode ser exposta, nunca para produtos 135 a 144.
 - Disponibilidade considera status e estoque. Em listas, indisponíveis não aparecem; quando perguntado diretamente, o agente explica o motivo e sugere alternativas válidas.
 - Promoção exige registro ativo para o produto; informar preço original, percentual e preço final. PIX não acumula com promoção; em caso de duas promoções ativas, prevalece a de maior desconto.
-- Data/hora vem de `REFERENCE_DATETIME`, com fuso `America/Campo_Grande` e padrão `2026-03-23T10:00:00`.
+- Data/hora vem de `REFERENCE_DATETIME`, com fuso `America/Campo_Grande` e padrão `2026-03-23T10:00:00`; sem valor, usa-se o relógio atual. O expediente é de segunda a sexta, das 9h às 18h, e sábado, das 9h às 13h. Domingo e feriados não modelados são considerados fechados.
 
 O parcelamento segue a regra detalhada do §3.1: até 3x, cada parcela deve ser de pelo menos R$ 50; de 4x a 6x, R$ 80; de 7x a 12x, R$ 100. A tool planejada `simular_parcelamento` fará os cálculos no código para evitar erro matemático, condições inventadas e consumo de tokens com contas. O modelo interpreta e explica o resultado.
 

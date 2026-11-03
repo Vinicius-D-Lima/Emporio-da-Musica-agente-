@@ -54,12 +54,14 @@ Critério de aceite:
 
 Commit sugerido: `feat(db): conexões leitura/escrita e authorizer`
 
-## Passo 3 — Schemas e validações Pydantic
+## Passo 3 — Configuração e horário da loja
 
-Critério de aceite:
-- todos os argumentos das tools usam modelos Pydantic;
-- erros de validação retornam resposta estruturada; 
-- argumentos inválidos não quebram o agente.
+- [x] `carregar_configuracao()` carrega provedor, fallback e chaves do ambiente, e informa com erro claro se uma chave necessária estiver ausente;
+- [x] `agora()` usa `REFERENCE_DATETIME` ou o relógio do sistema, sempre em `America/Campo_Grande`; `hoje()` deriva a data de `agora()`;
+- [x] referência temporal inválida falha com mensagem clara; `.env.example` define `2026-03-23T10:00:00`;
+- [x] `loja_aberta(agora)` aplica segunda a sexta 09:00–18:00, sábado 09:00–13:00 e domingo fechado; feriados não são modelados;
+- [x] `date.today()` e `datetime.now()` só são usados em `config.py`;
+- [x] os testes de configuração cobrem carregamento, fusos, validação e limites do expediente.
 
 ## Passo 4 — Tools de catálogo e detalhes
 
@@ -129,14 +131,6 @@ Critério de aceite:
 Critério de aceite:
 - `cli.py` lê opções de conversa e debug;
 - CLI chama o núcleo do agente e imprime resposta textualmente.
-
-## Passo 13 — Configuração de ambiente e data
-
-Critério de aceite:
-- `.env` e `config.py` carregam `REFERENCE_DATETIME` no fuso `America/Campo_Grande`;
-- `agora()` centraliza data e hora, e `hoje()` deriva a data de `agora()`;
-- `horario_loja()` informa o horário de funcionamento usando a referência centralizada;
-- horário previsto pelo manual §2: segunda a sexta 09:00–18:00, sábado 09:00–13:00, domingo fechado; feriados não são modelados.
 
 ## Passo 14 — Exemplos e documentação de uso
 
