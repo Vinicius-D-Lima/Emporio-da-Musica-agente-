@@ -27,7 +27,7 @@
 | A descrição original do produto nunca é enviada ao modelo. | Há inconsistências entre descrições, nomes e especificações dos dados. |
 | Cliente é identificado por número do pedido e e-mail; `customer_id` verificado fica na sessão. | A identidade não deve vir como argumento do modelo. |
 | O histórico será resumido, mantendo as mensagens recentes completas. | Preserva contexto relevante sem enviar toda a conversa indefinidamente. |
-| O classificador começa com regras e usa LLM somente em caso de dúvida; pode retornar vários rótulos. | Permite combinar intenções na mesma mensagem sem criar a categoria `misto`. |
+| O classificador começa com regras e chama callback LLM opcional apenas quando nenhuma regra reconhece a mensagem; sem callback retorna lista vazia. Pode retornar vários rótulos, e pedidos de acessórios recebem `acessorio` + `fora_assunto`. | Mantém classificação previsível, permite integração posterior do provedor sem acoplar o módulo e combina intenções sem criar `misto`. |
 | As categorias iniciais são `dado_loja`, `politica`, `acessorio`, `fora_assunto` e `saudacao`. | São os rótulos iniciais definidos para o domínio. |
 | `scikit-learn` fica como evolução do Passo 18. | A comparação será feita depois, no mesmo conjunto de teste. |
 | Acessórios serão redirecionados usando uma lista fixa de lojas de exemplo, sem alegar parceria real. | O manual recomenda lojas, mas não fornece uma lista de parceiras. |

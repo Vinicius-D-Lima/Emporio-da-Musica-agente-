@@ -29,7 +29,7 @@ flowchart LR
 ## Fluxo de uma mensagem
 
 1. A mensagem chega pela CLI e é associada a uma conversa.
-2. `classificar_intencao()` aplica regras e, se persistir dúvida, pode recorrer ao LLM; uma mensagem pode receber vários rótulos.
+2. `classificar_intencao()` aplica regras determinísticas; se nenhuma identificar a mensagem, pode chamar um classificador LLM injetado. Sem callback, retorna lista vazia; uma mensagem pode receber vários rótulos.
 3. As definições das tools são enviadas separadamente; as mensagens seguem a ordem: persona, regras e manual → resumo contextual (quando houver) → histórico recente → mensagem nova.
 4. `llm.py` chama o provedor principal via cliente `openai` configurado com o `base_url` correspondente.
 5. Se houver 429, timeout ou erro 5xx, o agente tenta o provedor reserva. Erros de tools e validação não acionam fallback.

@@ -67,7 +67,7 @@ A definição das tools é enviada separadamente das mensagens. Nelas, o prefixo
 
 ### Classificador e fora de escopo
 
-O classificador começa com regras e pode recorrer ao LLM somente em caso de dúvida. Uma mensagem pode receber múltiplos rótulos: `dado_loja`, `politica`, `acessorio`, `fora_assunto` e `saudacao`; não existe categoria `misto`. `scikit-learn` fica como evolução do Passo 18. A loja vende instrumentos; para acessórios, o agente redireciona com educação usando apenas a lista de exemplo em `data/processed/lojas_parceiras.json` — Mercado Livre, Amazon Brasil, Shopee, Multisom, Mil Sons e Serenata — sem afirmar parceria real. Sites são incluídos somente onde registrados no JSON.
+O classificador aplica regras primeiro e chama um classificador LLM opcional somente quando nenhuma regra reconhecer a mensagem; sem callback configurado, retorna uma lista vazia. Uma mensagem pode receber múltiplos rótulos: `dado_loja`, `politica`, `acessorio`, `fora_assunto` e `saudacao`; pedidos de acessórios recebem `acessorio` e `fora_assunto`, sem criar a categoria `misto`. `scikit-learn` fica como evolução do Passo 18. A loja vende instrumentos; para acessórios, o agente redireciona com educação usando apenas a lista de exemplo em `data/processed/lojas_parceiras.json` — Mercado Livre, Amazon Brasil, Shopee, Multisom, Mil Sons e Serenata — sem afirmar parceria real. Sites são incluídos somente onde registrados no JSON.
 
 ## Problemas encontrados nos dados e suposições
 
