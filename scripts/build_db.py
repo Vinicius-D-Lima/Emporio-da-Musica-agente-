@@ -113,7 +113,7 @@ def _schema_statements(schema: str) -> list[str]:
 
 
 def _ensure_conversation_columns(conn: sqlite3.Connection) -> None:
-    """Adiciona os campos de resumo a uma tabela de conversas preexistente sem apagar seus dados."""
+    """Adiciona campos auxiliares a conversas preexistentes sem apagar seus dados."""
     columns = {
         row[1] for row in conn.execute("PRAGMA table_info(conversations)").fetchall()
     }
@@ -122,6 +122,10 @@ def _ensure_conversation_columns(conn: sqlite3.Connection) -> None:
     if "summarized_until_message_id" not in columns:
         conn.execute(
             "ALTER TABLE conversations ADD COLUMN summarized_until_message_id INTEGER"
+        )
+    if "verification_attempts" not in columns:
+        conn.execute(
+            "ALTER TABLE conversations ADD COLUMN verification_attempts INTEGER NOT NULL DEFAULT 0"
         )
 
 

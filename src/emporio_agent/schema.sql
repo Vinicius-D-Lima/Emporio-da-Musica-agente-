@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     verified_customer_id INTEGER,
     summary TEXT,
     summarized_until_message_id INTEGER,
+    verification_attempts INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (verified_customer_id) REFERENCES customers(customer_id)
 );
 

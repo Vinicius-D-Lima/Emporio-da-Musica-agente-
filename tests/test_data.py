@@ -119,7 +119,11 @@ def test_build_database_atende_aos_criterios_do_passo_1(
         colunas_conversa = {
             linha[1] for linha in conn.execute("PRAGMA table_info(conversations)")
         }
-        assert {"summary", "summarized_until_message_id"} <= colunas_conversa
+        assert {
+            "summary",
+            "summarized_until_message_id",
+            "verification_attempts",
+        } <= colunas_conversa
 
         conn.execute(
             """

@@ -62,6 +62,7 @@ flowchart LR
 - Tabelas da loja: `categories`, `products`, `promotions`, `customers`, `orders`, `order_items`.
 - Tabelas do agente: `conversations`, `messages`, `tool_calls`.
 - `conversations.summary` guarda o resumo; `summarized_until_message_id` registra até qual mensagem ele foi produzido.
+- `conversations.verified_customer_id` mantém a identidade verificada e `verification_attempts` limita tentativas inválidas por conversa.
 - `orders.total_brl` permanece o valor oficial; `total_needs_review` sinaliza divergência.
 - `installments` pode ser NULL para meios de pagamento à vista.
 - A sessão mantém o `customer_id` verificado; ele nunca é fornecido como argumento do modelo.

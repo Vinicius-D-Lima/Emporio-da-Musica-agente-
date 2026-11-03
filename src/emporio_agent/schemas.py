@@ -57,6 +57,14 @@ class VerificarClienteArgs(BaseModel):
     order_id: int = Field(ge=1)
     email: str = Field(min_length=1)
 
+    @field_validator("email")
+    @classmethod
+    def normalizar_email(cls, email: str) -> str:
+        email = email.strip()
+        if not email:
+            raise ValueError("O e-mail não pode ser vazio.")
+        return email
+
 
 class StatusPedidoArgs(BaseModel):
     """Argumentos para consultar o status de um pedido."""

@@ -89,12 +89,19 @@ Commit sugerido: `feat(tools): busca e detalhes de produtos`
 
 Commit sugerido: `feat(tools): promoções e cálculo de preço final`
 
-## Passo 6 — Segurança e remoção de vazamentos
+## Passo 6 — Pedidos e identidade
 
-Critério de aceite:
-- telefone, e-mail e `description_raw` nunca são devolvidos;
-- `SELECT *` não aparece no código;
-- `date.today()` não existe fora do módulo de configuração.
+- [x] `verificar_cliente` compara e-mail sem diferenciar caixa e espaços, e registra `customer_id` somente na conversa;
+- [x] pedido inexistente e e-mail incorreto retornam a mesma resposta;
+- [x] tentativas inválidas são persistidas por conversa e bloqueadas após três tentativas;
+- [x] `status_pedido` recebe o `conversa_id` como contexto interno, não aceita `customer_id` do modelo e restringe pedidos ao cliente verificado;
+- [x] respostas incluem status, data, itens, pagamento, rastreio e previsão, sem telefone ou e-mail;
+- [x] pedidos 3 e 20 ocultam o valor quando `total_needs_review` está ativo;
+- [x] atraso do pedido 8 é calculado com `hoje()` e `REFERENCE_DATETIME`;
+- [x] cancelamentos informam o motivo; pedidos pendentes/confirmados sem rastreio informam que ainda não foram despachados;
+- [x] `tests/test_security.py` cobre verificação, limite por conversa, autorização e privacidade.
+
+Commit sugerido: `feat(tools): verificação de cliente e status de pedido`
 
 ## Passo 7 — LLM provider e fallback
 
