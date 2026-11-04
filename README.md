@@ -1,14 +1,14 @@
-<!-- Responsabilidade: explicar a configuração, as decisões e as limitações do Empório Agente. -->
+<!-- Responsibility: explain the setup, decisions and limitations of Empório Agent. -->
 
-# Empório Agente
+# Empório Agent
 
-## Como rodar
+A Python customer-service agent prototype for Empório da Música, a fictional musical-instrument store in Campo Grande/MS. It answers text messages over a CLI, queries store data (products, prices, stock, promotions, orders) through fixed-parameter tools, and applies the store's internal policy manual. **The agent talks to customers in Portuguese**, because the store, its data and its manual are in Portuguese; all project documentation is in English.
 
-### Ambiente
+## How to run
 
-Use Python 3.11 ou superior. Execute os comandos abaixo na raiz do repositório
-(a pasta que contém `README.md` e `pyproject.toml`). No Linux, `python3` cria o
-ambiente virtual; depois de ativá-lo, `python` aponta para o Python do projeto:
+### Environment
+
+Use Python 3.11 or later. Run the commands below from the repository root (the folder that contains `README.md` and `pyproject.toml`). On Linux, `python3` creates the virtual environment; once it is activated, `python` points to the project's Python:
 
 ```bash
 python3 -m venv .venv
@@ -17,199 +17,126 @@ python -m pip install -e .
 cp -n .env.example .env
 ```
 
-O `cp -n` cria `.env` sem substituir um arquivo que já exista. Edite `.env` e
-preencha as chaves `GEMINI_API_KEY` e `GROQ_API_KEY` (ou deixe
-`LLM_FALLBACK=` vazio para usar apenas um provedor). Em seguida, gere o banco e
-inicie a CLI, ainda com o ambiente virtual ativado:
+`cp -n` creates `.env` without overwriting an existing file. Edit `.env` and fill in `GEMINI_API_KEY` and `GROQ_API_KEY` (or leave `LLM_FALLBACK=` empty to use a single provider). Then build the database and start the CLI, still inside the virtual environment:
 
 ```bash
 python scripts/build_db.py
 python -m emporio_agent.cli
 ```
 
-Digite uma mensagem por linha; use `/sair`, `Ctrl+D` ou `Ctrl+C` para encerrar.
-A CLI mostra o ID da conversa, que pode ser retomada com
-`python -m emporio_agent.cli --conversa ID`.
-Use `python -m emporio_agent.cli --debug` para habilitar logs de depuração.
-Esse modo registra apenas campos técnicos permitidos em falhas, sem registrar o
-corpo da requisição; valores de mensagens, chaves e dados pessoais reconhecidos
-são redigidos, e logs HTTP de terceiros são suprimidos.
+Type one message per line; use `/sair`, `Ctrl+D` or `Ctrl+C` to quit. The CLI shows the conversation ID, which can be resumed with `python -m emporio_agent.cli --conversa ID`. Use `python -m emporio_agent.cli --debug` to enable debug logs. In this mode only allowed technical fields are logged on failures, without the request body; message values, keys and recognised personal data are redacted, and third-party HTTP logs are suppressed.
 
-### Testes e cenários
+### Tests and scenarios
 
-Com o ambiente virtual ativado, execute os testes automatizados locais (sem
-chamadas a provedores reais):
+With the virtual environment activated, run the local automated tests (no calls to real providers):
 
 ```bash
 python -m pytest
 ```
 
-Os cenários adversários com LLM real estão em
-[`tests/test_scenarios.py`](tests/test_scenarios.py) e são identificados de
-`A01` a `A24`. Para executar somente um cenário, por exemplo o `A01`:
+The adversarial scenarios that use a real LLM are in [`tests/test_scenarios.py`](tests/test_scenarios.py) and are identified `A01` to `A24`. To run a single scenario, for example `A01`:
 
 ```bash
 python -m pytest --run-llm -m llm tests/test_scenarios.py -k A01
 ```
 
-Para executar todos os cenários com LLM real:
+To run all real-LLM scenarios:
 
 ```bash
 python -m pytest --run-llm -m llm tests/test_scenarios.py
 ```
 
-Esses dois últimos comandos fazem chamadas externas, enviam as mensagens dos
-cenários aos provedores configurados e podem consumir cota ou gerar custos.
-Configure as chaves no `.env` e use dados de teste, não dados pessoais reais.
-Ao abrir um terminal novo, entre novamente na pasta do projeto e ative o
-ambiente com `source .venv/bin/activate`. Se aparecer `python: command not
-found`, confira se o ambiente está ativado e se o comando foi executado na raiz
-do repositório.
+These last two commands make external calls, send the scenario messages to the configured providers and may consume quota or incur costs. Configure the keys in `.env` and use test data, not real personal data. When you open a new terminal, go back to the project folder and activate the environment with `source .venv/bin/activate`. If you see `python: command not found`, check that the environment is activated and that you are in the repository root.
 
-### Provedor e configuração
+### Provider and configuration
 
-O padrão é Gemini `gemini-3.5-flash-lite` com Groq `openai/gpt-oss-120b`
-como reserva. Configure `GEMINI_API_KEY` e `GROQ_API_KEY` em `.env`; como o
-fallback está habilitado por padrão, as duas chaves são necessárias. Para usar
-somente um provedor, deixe `LLM_FALLBACK` vazio. Os modelos podem ser alterados
-por `GEMINI_MODEL` e `GROQ_MODEL`.
+The default is Gemini `gemini-3.5-flash-lite` with Groq `openai/gpt-oss-120b` as the fallback. Set `GEMINI_API_KEY` and `GROQ_API_KEY` in `.env`; since fallback is enabled by default, both keys are required. To use a single provider, leave `LLM_FALLBACK` empty. The models can be changed with `GEMINI_MODEL` and `GROQ_MODEL`.
 
-`REFERENCE_DATETIME` define a referência temporal no fuso
-`America/Campo_Grande`. O `.env.example` inclui uma data fixa para reproduzir
-cenários; se a variável estiver vazia ou ausente, o sistema usa o relógio atual.
-Não coloque chaves reais no repositório.
+`REFERENCE_DATETIME` sets the time reference in the `America/Campo_Grande` time zone. `.env.example` includes a fixed date to reproduce scenarios; if the variable is empty or missing, the system uses the current clock. Do not put real keys in the repository.
 
-O fallback ocorre em 404, 429, timeout ou erro 5xx; erros 400/401 e falhas de
-execução de ferramentas não o acionam. Se o endpoint OpenAI-compatible do
-Gemini rejeitar explicitamente function calling, essa chamada usa o SDK nativo
-do Gemini. O provedor que respondeu é registrado no histórico. A assinatura
-`thought_signature` do Gemini é mantida apenas em memória durante o ciclo de
-function calling. O agente também aceita um modelo injetado para testes sem
-requisições externas. Para manter uma conversa em chamadas diretas a
-`responder_mensagem()`, crie uma conversa com `memory.criar_conversa()` e
-reutilize o mesmo `conversa_id`.
+Fallback happens on 404, 429, timeout or 5xx errors; 400/401 errors and tool-execution failures do not trigger it. If Gemini's OpenAI-compatible endpoint explicitly rejects function calling, that call uses Gemini's native SDK. The provider that answered is recorded in the history. Gemini's `thought_signature` is kept only in memory during the function-calling cycle. The agent also accepts an injected model for tests without external requests. To keep a conversation across direct calls to `responder_mensagem()`, create a conversation with `memory.criar_conversa()` and reuse the same `conversa_id`.
 
-Os testes de provedores usam clientes simulados. Chamadas reais enviam texto e
-contexto ao serviço configurado; dados fornecidos para verificação de pedidos
-também podem ser enviados. Antes de usar dados de clientes, avalie privacidade,
-consentimento e retenção e faça uma chamada real controlada para verificar
-credenciais e compatibilidade.
+Provider tests use simulated clients. Real calls send text and context to the configured service; data given to verify orders may also be sent. Before using customer data, assess privacy, consent and retention, and run a controlled real call to verify credentials and compatibility.
 
-## Decisões técnicas
+## Technical decisions
 
-### Framework/abordagem do agente
+### Agent framework / approach
 
-Escolhi function calling direto com loop manual, sem framework. O agente tem poucas tools e quero controlar explicitamente cada chamada. Dados estruturados (produtos, preços, estoque, pedidos e promoções) são acessados por tools de parâmetros fixos, sem text-to-SQL.
+I chose direct function calling with a hand-written loop and no framework. The agent has few tools and I want to control every call explicitly. Structured data (products, prices, stock, orders and promotions) is accessed through fixed-parameter tools, without text-to-SQL.
 
-### Modelo e provedor
+### Model and provider
 
-Gemini `gemini-3.5-flash-lite` é o provedor principal escolhido para este
-protótipo; Groq `openai/gpt-oss-120b` é a alternativa configurada. O cliente do
-pacote `openai` usa um `base_url` específico para cada provedor, mantendo uma
-interface comum. O fallback é limitado a falhas de disponibilidade e não se
-aplica a erros de credenciais, requisições inválidas ou execução de tools.
-Ainda não foi feita uma validação real de compatibilidade ponta a ponta. Preços,
-limites, disponibilidade e comportamento de cache dependem do provedor, modelo
-e conta; consulte as fontes oficiais antes de uso real, em vez de tratar valores
-históricos como garantidos.
+Gemini `gemini-3.5-flash-lite` is the main provider chosen for this prototype; Groq `openai/gpt-oss-120b` is the configured alternative. The `openai` package client uses a provider-specific `base_url`, keeping a common interface. Fallback is limited to availability failures and does not apply to credential errors, invalid requests or tool execution. Real provider calls have so far been made only for part of the adversarial scenarios (see the AI usage log, 2026-11-04), and some of them hit 429 limits and were inconclusive; a complete controlled end-to-end validation of function calling and fallback on both providers is still pending. Prices, limits, availability and cache behaviour depend on the provider, model and account; check the official sources before real use instead of treating historical values as guaranteed.
 
-### Interface de interação
+### Interaction interface
 
-A interface inicial é CLI, pois o foco é o agente funcionando. O núcleo recebe texto e devolve texto sem depender da interface; FastAPI é uma evolução futura.
+The initial interface is a CLI, because the focus is the agent working correctly. The core receives text and returns text without depending on the interface; FastAPI is a future evolution.
 
-Os contatos adotados na documentação são telefone `(67) 3341-4444`, WhatsApp `(67) 3321-4500` e e-mail `contato@emporiodamusica.com.br`. Essa escolha separa telefone e WhatsApp conforme as informações do manual; não representa confirmação oficial da loja.
+The contacts adopted in the documentation are phone `(67) 3341-4444`, WhatsApp `(67) 3321-4500` and e-mail `contato@emporiodamusica.com.br`. This choice separates phone and WhatsApp according to the manual's information; it is not an official confirmation from the store.
 
-### Persistência do histórico
+### Conversation history persistence
 
-SQLite com `sqlite3` puro em um único arquivo, sem ORM. Os dados são relacionais, as consultas são fixas e o banco da loja é reconstruído a partir dos CSVs. `memory.py` persiste conversas, mensagens, provedor e chamadas de tools. Acima de 20 mensagens ainda não resumidas, um callback de resumo mantém as 10 mensagens recentes completas e atualiza o resumo e seu limite; as mensagens originais não são apagadas. O provedor configurado também é usado para resumir conversas. E-mails e telefones reconhecíveis no conteúdo de mensagens e nos argumentos das tools são redigidos antes de serem retornados ao histórico ou enviados ao resumidor. A conexão de escrita é isolada em `memory.py`; as tools consultam a base em modo somente leitura, com `set_authorizer` e colunas explicitamente listadas. Redis não é necessário para a execução local em um único processo. Se o projeto crescer, uma alternativa futura é SQLAlchemy/SQLModel com migrations.
+SQLite with plain `sqlite3` in a single file, no ORM. The data is relational, the queries are fixed, and the store database is rebuilt from the CSVs. `memory.py` persists conversations, messages, the provider and tool calls. Beyond 20 not-yet-summarised messages, a summary callback keeps the 10 most recent messages in full and updates the summary and its limit; the original messages are never deleted. The configured provider is also used to summarise conversations. Recognisable e-mails and phone numbers in message content and in tool arguments are redacted before being returned to the history or sent to the summariser. The write connection is isolated in `memory.py`; the tools query the database in read-only mode, with `set_authorizer` and explicitly listed columns. Redis is not needed for local execution in a single process. If the project grows, a future alternative is SQLAlchemy/SQLModel with migrations.
 
-### Tratamento dos dados
+### Data handling
 
-- `total_brl` é o valor oficial do pedido. Divergências marcam `total_needs_review` e encaminham o caso à equipe, sem informar um valor em revisão.
-- Preços ficam em REAL; usar `round(x, 2)` e tolerância de 0.01.
-- `installments` pode ser NULL para PIX, débito e boleto, que serão tratados como pagamento à vista.
-- A descrição original não é enviada ao modelo; somente uma lista permitida de especificações pode ser exposta, nunca para produtos 135 a 144.
-- Disponibilidade considera status e estoque. Em listas, indisponíveis não aparecem; quando perguntado diretamente, o agente explica o motivo e sugere alternativas válidas.
-- Promoção exige registro ativo para o produto; informar preço original, percentual e preço final. PIX não acumula com promoção; em caso de duas promoções ativas, prevalece a de maior desconto.
-- Data/hora vem de `REFERENCE_DATETIME`, no fuso `America/Campo_Grande`; o `.env.example` usa `2026-03-23T10:00:00` para reprodução local e, sem valor configurado, usa-se o relógio atual. O expediente descrito no manual é de segunda a sexta, das 9h às 18h, e sábado, das 9h às 13h. Domingo e feriados não modelados são considerados fechados.
+- `total_brl` is the official order total. Discrepancies set `total_needs_review` and route the case to the team, without stating a value under review.
+- Prices are stored as REAL; use `round(x, 2)` and a 0.01 tolerance.
+- `installments` may be NULL for PIX, debit and boleto, which are treated as single-payment.
+- The original product description is never sent to the model; only an allowed list of specifications may be exposed, never for products 135 to 144.
+- Availability considers status and stock. In lists, unavailable products do not appear; when asked directly, the agent explains the reason and suggests valid alternatives.
+- A promotion requires an active record for the product; report the original price, the percentage and the final price. PIX does not stack with a promotion; if two active promotions exist, the larger discount wins.
+- Date/time comes from `REFERENCE_DATETIME`, in the `America/Campo_Grande` time zone; `.env.example` uses `2026-03-23T10:00:00` for local reproduction and, without a configured value, the current clock is used. The opening hours in the manual are Monday to Friday, 9:00 to 18:00, and Saturday, 9:00 to 13:00. Sundays and holidays that are not modelled are treated as closed.
 
-O parcelamento segue a regra detalhada do §3.1: até 3x, cada parcela deve ser de pelo menos R$ 50; de 4x a 6x, R$ 80; de 7x a 12x, R$ 100. A tool `simular_parcelamento` calcula no código as opções de 1x a 12x, usando o preço do catálogo ou o preço promocional ativo. Recusa simular itens indisponíveis e não acumula desconto de PIX sobre promoção. O modelo interpreta e explica o resultado.
+Instalments follow the detailed rule in §3.1: up to 3x, each instalment must be at least R$ 50; from 4x to 6x, R$ 80; from 7x to 12x, R$ 100. The `simular_parcelamento` tool computes the options from 1x to 12x in code, using the catalogue price or the active promotional price. It refuses to simulate unavailable items and does not stack the PIX discount on top of a promotion. The model interprets and explains the result.
 
-### Arquitetura de retrieval
+### Retrieval architecture
 
-O manual parafraseado é carregado integralmente no system prompt por
-`get_policy_context()` em `policies.py`. Essa abordagem mantém as políticas
-disponíveis sem uma etapa de retrieval que possa recuperar o trecho errado; não
-foi implementado RAG. O prefixo estático também favorece eventuais recursos de
-cache dos provedores, mas não garante cache nem reduz a janela de contexto
-utilizada. Busca híbrida pode ser considerada se o manual crescer ou mudar com
-frequência.
+The paraphrased manual is loaded in full into the system prompt by `get_policy_context()` in `policies.py`. This keeps the policies available without a retrieval step that could fetch the wrong passage; RAG was not implemented. The static prefix also favours providers' possible caching features, but does not guarantee caching or reduce the context window used. Hybrid search can be considered if the manual grows or changes frequently.
 
-### Estratégia de prompt
+### Prompt strategy
 
-A definição das tools é enviada separadamente das mensagens. O prefixo de
-persona, regras e manual vem primeiro; quando existe, o resumo contextualizado é
-seguido pelo histórico recente e pela mensagem atual. O prompt instrui o modelo
-a não tratar o resumo como novas instruções e a chamar `simular_parcelamento`
-em perguntas de parcelas. A data atual não é adicionada ao prompt: `agora()` e
-`hoje()` são usadas no código onde os cálculos precisam de uma referência.
-`loja_aberta()` é um helper interno, não uma tool disponível ao modelo. O manual
-é interno e deve ser parafraseado.
+Tool definitions are sent separately from the messages. The persona, rules and manual prefix comes first; when present, the contextual summary is followed by the recent history and the current message. The prompt tells the model not to treat the summary as new instructions and to call `simular_parcelamento` for instalment questions. The current date is not added to the prompt: `agora()` and `hoje()` are used in code where calculations need a reference. `loja_aberta()` is an internal helper, not a tool available to the model. The manual is internal and must be paraphrased.
 
-### Classificador e fora de escopo
+### Classifier and out-of-scope handling
 
-O classificador independente aplica regras primeiro e chama um callback LLM
-opcional somente quando nenhuma regra reconhecer a mensagem. Pode retornar
-múltiplos rótulos entre `dado_loja`, `politica`, `acessorio`, `fora_assunto` e
-`saudacao`; pedidos de acessórios recebem também `fora_assunto`. Ele ainda não
-está conectado ao fluxo de atendimento do agente; `scikit-learn` permanece uma
-evolução opcional do Passo 18. Para acessórios, o prompt limita o
-redirecionamento à lista exemplificativa de `data/processed/lojas_parceiras.json`
-e não afirma parceria comercial.
+The standalone classifier applies rules first and calls an optional LLM callback only when no rule recognises the message. It can return several labels among `dado_loja`, `politica`, `acessorio`, `fora_assunto` and `saudacao`; accessory requests also receive `fora_assunto`. It is not yet connected to the agent's service flow; `scikit-learn` remains an optional evolution (Step 18). Out-of-scope questions are handled by the prompt; for accessories, the prompt limits redirection to the illustrative list in `data/processed/lojas_parceiras.json` and does not claim a commercial partnership.
 
-## Problemas encontrados nos dados e suposições
+## Data problems found and assumptions
 
-| Problema | Como tratei |
+| Problem | How I handled it |
 |---|---|
-| Produto 96 está ativo sem estoque; 136 está descontinuado com estoque; 130 está em breve apesar de ter estoque e pedidos. | O status define a disponibilidade conforme as regras; o estoque não altera o status `coming_soon`. |
-| Produtos 135 a 144 têm inconsistências entre nome, descrição e especificações. | A descrição original não é enviada ao modelo; especificações desses produtos não são expostas. |
-| `specs` é JSON textual com chaves e significados diferentes entre categorias. | Usar somente as chaves permitidas e interpretar cada campo conforme as regras já definidas. |
-| Categorias 6, 7 e 8 não têm produtos, embora o manual mencione esses instrumentos; o catálogo tem 65 produtos apesar da menção a mais de 300. | Responder conforme o catálogo disponível, sem inventar itens. |
-| Promoções ativas não têm datas de início/fim; o Takamine GD20 (95) tem promoção inativa. | Considerar apenas `is_active = 1`; não anunciar a promoção inativa. |
-| As quatro promoções ativas estão nos produtos 127, 121, 90 e 94; algumas outras promoções são inativas e as descrições sazonais não têm datas. | Consultar somente as promoções marcadas como ativas e não inferir uma vigência por nome. |
-| Pedidos 3 e 20 têm total diferente da soma calculada com preços atuais. | Manter `total_brl` como oficial, marcar `total_needs_review` e encaminhar sem divulgar o valor. |
-| `order_items` não registra preço unitário; a comparação usa o preço atual do produto. | Tratar `total_needs_review` como alerta, sem inventar a causa da divergência. |
-| Pedidos 9, 16 e 18 têm parcelas abaixo dos mínimos do §3.1. | Não tratar os valores históricos como condições válidas para novas simulações. |
-| Pedido 7 contradiz a tabela do §3, mas respeita o §3.1. | Para parcelamento, usar a regra detalhada do §3.1; a divergência do manual fica documentada. |
-| Pedidos 8 e 7 têm previsões de entrega anteriores à data de referência; o CSV não traz a data efetiva de recebimento. | Comparar com `REFERENCE_DATETIME` apenas para a previsão. O prazo de arrependimento contado do recebimento não pode ser inferido da previsão. |
-| `payment_method` combina meio e parcelas; há clientes com e-mail repetido e nomes parecidos. | Separar tipo e parcelas; verificar cliente por pedido + e-mail, sem usar e-mail como identificador único. |
-| O manual diverge sobre telefone e WhatsApp, grafia do e-mail, parcelamento e lista de lojas parceiras. | Adotar os contatos documentados em `docs/DECISOES.md`, usar a regra detalhada do §3.1 e marcar as lojas como lista de exemplo. Os contatos não têm confirmação oficial. |
-| O manual cita troca por defeito em 30 dias e garantia legal de 90 dias. | Manter a divergência registrada para tratamento conforme a política após revisão do manual; não inventar uma regra única. |
+| Product 96 is active with no stock; 136 is discontinued with stock; 130 is "coming soon" although it has stock and orders. | Status defines availability according to the rules; stock does not change the `coming_soon` status. |
+| Products 135 to 144 have inconsistencies between name, description and specifications. | The original description is not sent to the model; specifications of these products are not exposed. |
+| `specs` is textual JSON with different keys and meanings across categories. | Use only the allowed keys and interpret each field according to the rules already defined. |
+| Categories 6, 7 and 8 have no products although the manual mentions these instruments; the catalogue has 65 products although the manual mentions more than 300. | Answer according to the available catalogue, without inventing items. |
+| Active promotions have no start/end dates; the Takamine GD20 (95) has an inactive promotion. | Consider only `is_active = 1`; do not advertise the inactive promotion. |
+| The four active promotions are on products 127, 121, 90 and 94; some other promotions are inactive and the seasonal descriptions have no dates. | Query only promotions marked active and do not infer a validity period from the name. |
+| Orders 3 and 20 have a total that differs from the sum computed with current prices. | Keep `total_brl` as official, set `total_needs_review` and route to the team without disclosing the value. |
+| `order_items` stores no unit price; the comparison uses the product's current price. | Treat `total_needs_review` as an alert, without inventing the cause of the discrepancy. |
+| Orders 9, 16 and 18 have instalments below the §3.1 minimums. | Do not treat the historical values as valid conditions for new simulations. |
+| Order 7 contradicts the §3 table but respects §3.1. | For instalments, use the detailed §3.1 rule; the manual's divergence is documented. |
+| Orders 8 and 7 have estimated delivery dates earlier than the reference date; the CSV has no actual receipt date. | Compare with `REFERENCE_DATETIME` only for the estimate. The withdrawal period counted from receipt cannot be inferred from the estimate. |
+| `payment_method` combines method and instalments; some customers share an e-mail and have similar names. | Split type and instalments; verify the customer by order + e-mail, without using the e-mail as a unique identifier. |
+| The manual diverges on phone and WhatsApp, e-mail spelling, instalments and the list of partner stores. | Adopt the contacts documented in `docs/DECISIONS.md`, use the detailed §3.1 rule and mark the stores as an example list. The contacts have no official confirmation. |
+| The manual cites exchange for defects within 30 days and a 90-day legal warranty. | Keep the divergence recorded for handling according to the policy after the manual is reviewed; do not invent a single rule. |
 
-## Limitações conhecidas e o que faria com mais tempo
+## Known limitations and what I would do with more time
 
-- Testar tool calling real e fallback nos dois provedores; confirmar a disponibilidade do modelo Gemini e os detalhes oficiais de cache, limites e preços antes da entrega.
-- Validar os rótulos do classificador em conjunto escrito pelo usuário e comparar, no Passo 18, com `scikit-learn`.
-- Substituir a lista exemplificativa de lojas por uma lista autorizada, se disponível.
-- Implementar RAG híbrido se o manual crescer ou mudar com frequência.
-- Adicionar autenticação real para consultas de pedido e uma interface FastAPI.
-- Validar e ajustar a política de resumo e janela de histórico.
+- Run a complete controlled test of real tool calling and fallback on both providers (only part of the adversarial scenarios has been run against real providers so far, with some inconclusive 429 results); confirm Gemini model availability and the official details of cache, limits and prices before delivery.
+- Validate the classifier labels on a user-written set and compare them with `scikit-learn` in Step 18.
+- Replace the illustrative store list with an authorised list, if available.
+- Implement hybrid RAG if the manual grows or changes frequently.
+- Add real authentication for order queries and a FastAPI interface.
+- Validate and tune the summarisation policy and history window.
 
-## Uso de assistentes de código
+## Use of code assistants
 
-- Ferramenta: GitHub Copilot no VS Code.
-- Uso: desenvolvimento iterativo por etapas, com implementação, análise de falhas e execução de testes locais. As decisões de produto e segurança são revisadas pelo usuário e registradas em `docs/DECISOES_DO_USUARIO.md`; o histórico do trabalho está em `docs/USO_DE_IA.md`.
-- Os testes determinísticos usam modelos simulados. Testes com provedores reais são opt-in e não devem ser descritos como executados sem uma execução confirmada.
+- **Tools:** GitHub Copilot in VS Code (agent mode) for implementation; Claude (chat) for discussing architecture options, drafting the step plan and reviewing and translating the documentation.
+- **Workflow:** development proceeds in small steps with acceptance criteria and tests (see `docs/STEP_PLAN.md`). The Copilot context is customised in `.github/`: repository instructions, review/adversary agents, a checklist skill and a reusable prompt to execute one plan step. A custom `grillme` skill interviews me about each decision, asks me to explain my reasoning, keeps questioning when the reasoning is weak and records the outcome in `docs/USER_DECISIONS.md`, with my own words kept separate from the assistant's analysis.
+- **Responsibility:** product and security decisions are made and reviewed by me and recorded in `docs/USER_DECISIONS.md`; the history of the work is in `docs/AI_USAGE.md`.
+- Deterministic tests use simulated models. Tests with real providers are opt-in and must not be described as executed without a confirmed run.
 
-O processo foi planejado em passos pequenos, com critérios de aceite e testes (ver `docs/PLANO_DE_PASSOS.md`); o registro real está em `docs/USO_DE_IA.md`.
+## Interaction examples
 
-## Exemplos de interação
-
-O desafio pede de 3 a 5 conversas, incluindo uma consulta de dados ou aplicação
-de política. Os cinco arquivos numerados em `examples/` ainda são roteiros com
-`[PREENCHER]`, não transcrições completas. O arquivo
-[conversas compartilhadas](examples/conversas_compartilhadas.md) contém cinco
-registros enviados pelo usuário, mas apenas o primeiro é uma conversa completa;
-os demais são trechos e as respostas não foram validadas contra uma execução.
-Assim, os exemplos do repositório ainda precisam ser revisados e completados
-antes de serem considerados conformes ao entregável do desafio.
+The challenge asks for 3 to 5 conversations, including a data query or application of a policy. The five numbered files in `examples/` are still outlines with `[FILL IN]`, not full transcripts. The file [shared conversations](examples/conversas_compartilhadas.md) contains five records supplied by the user, but only the first is a complete conversation; the others are excerpts and their answers were not validated against a real run. The repository's examples therefore still need to be reviewed and completed before they can be considered compliant with the challenge deliverable.
