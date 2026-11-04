@@ -186,8 +186,11 @@ Critério de aceite:
 ## Passo 16 — Revisão final e conformidade
 
 Critério de aceite:
-- verificações de segurança, documentação e comportamento;
-- projeto está pronto para a próxima etapa de implementação de regras reais.
+- [x] verificações locais de segurança e comportamento aprovadas pela suíte determinística;
+- [x] documentação do fluxo revisada para corresponder ao comportamento implementado;
+- [x] projeto apto a seguir para a próxima etapa de implementação.
+
+Resultado da revisão: suíte local com 189 testes aprovados e 25 ignorados. A redação de e-mails e telefones na memória foi conferida e ampliada para telefones nacionais contínuos com 10 a 13 dígitos. Os cenários com LLM real permanecem opt-in e não foram executados; compatibilidade de provedores, contatos e demais dados externos ainda requer validação antes de uso comercial. O campo `orders.notes` é enviado como motivo de cancelamento; a base atual contém apenas motivos operacionais, mas dados reais nessa coluna devem ser filtrados antes do envio ao modelo.
 
 ## Passo 17 — Entrega e revisão
 

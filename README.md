@@ -6,34 +6,60 @@
 
 ### Ambiente
 
-1. Use Python 3.11 ou superior e crie um ambiente virtual.
-2. Instale o projeto com `pip install -e .`.
-3. Copie `.env.example` para `.env` e configure as chaves dos provedores.
-4. Quando o build estiver implementado/atualizado, gere o banco com `python scripts/build_db.py`.
-5. Inicie a CLI interativa com `python -m emporio_agent.cli`. Digite uma mensagem
-   por linha; use `/sair`, `Ctrl+D` ou `Ctrl+C` para encerrar. A CLI mostra o ID da conversa
-   criada, que pode ser retomada em outra execução com
-   `python -m emporio_agent.cli --conversa ID`.
-6. Use `--debug` para habilitar logs de depuração:
-   `python -m emporio_agent.cli --debug`.
-   Em falhas do provedor, esse modo mostra campos técnicos permitidos da resposta,
-   sem registrar o corpo da requisição. Conteúdo completo das mensagens, e-mails,
-   números longos e chaves são redigidos; logs HTTP de terceiros, que podem conter
-   cabeçalhos como `Set-Cookie`, são suprimidos.
-   Em falhas do provedor, esse modo mostra o código e a mensagem técnica da resposta,
-   sem registrar o corpo da requisição. Valores completos das mensagens, e-mails,
-   números longos e chaves são redigidos; logs HTTP de terceiros, que podem conter
-   cabeçalhos como `Set-Cookie`, são suprimidos.
+Use Python 3.11 ou superior. A partir da raiz do repositório, crie e ative um
+ambiente virtual, instale o projeto e copie o arquivo de configuração:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+cp .env.example .env
+```
+
+Edite `.env` e preencha as chaves dos provedores. Com a configuração pronta,
+gere o banco a partir dos CSVs e inicie a CLI:
+
+```bash
+python scripts/build_db.py
+python -m emporio_agent.cli
+```
+
+Digite uma mensagem por linha; use `/sair`, `Ctrl+D` ou `Ctrl+C` para encerrar.
+A CLI mostra o ID da conversa, que pode ser retomada com
+`python -m emporio_agent.cli --conversa ID`.
+Use `python -m emporio_agent.cli --debug` para habilitar logs de depuração.
+Esse modo registra apenas campos técnicos permitidos em falhas, sem registrar o
+corpo da requisição; valores de mensagens, chaves e dados pessoais reconhecidos
+são redigidos, e logs HTTP de terceiros são suprimidos.
 
 ### Provedor e configuração
 
-O padrão é Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`) e o reserva é Groq (`openai/gpt-oss-120b`). A implementação usa os pacotes `openai` e `google-genai`, configurando o endpoint conforme o provedor. Preencha `GEMINI_API_KEY` e `GROQ_API_KEY` no `.env`; não coloque chaves reais no repositório. `REFERENCE_DATETIME` define a referência no fuso `America/Campo_Grande` e, se necessário, pode ser alterada. Se omitida, o relógio atual é usado.
+O padrão é Gemini `gemini-3.5-flash-lite` com Groq `openai/gpt-oss-120b`
+como reserva. Configure `GEMINI_API_KEY` e `GROQ_API_KEY` em `.env`; como o
+fallback está habilitado por padrão, as duas chaves são necessárias. Para usar
+somente um provedor, deixe `LLM_FALLBACK` vazio. Os modelos podem ser alterados
+por `GEMINI_MODEL` e `GROQ_MODEL`.
 
-O agente usa por padrão Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`) com Groq (`openai/gpt-oss-120b`) como reserva, ou os modelos configurados em `GEMINI_MODEL` e `GROQ_MODEL`. O fallback ocorre em modelo/endpoint não encontrado (404), limite de requisições (429), timeout ou erro 5xx; erros 400/401 não acionam a reserva para não mascarar erros de requisição ou credenciais. Se o endpoint compatível com OpenAI do Gemini rejeitar explicitamente function calling, essa chamada migra para o SDK nativo do Gemini. O provedor que respondeu fica registrado no histórico. O loop também aceita um modelo injetado para testes locais, sem chaves nem chamadas externas. Para manter uma conversa entre chamadas diretas a `responder_mensagem()`, crie uma conversa com `memory.criar_conversa()` e passe o mesmo `conversa_id`.
+`REFERENCE_DATETIME` define a referência temporal no fuso
+`America/Campo_Grande`. O `.env.example` inclui uma data fixa para reproduzir
+cenários; se a variável estiver vazia ou ausente, o sistema usa o relógio atual.
+Não coloque chaves reais no repositório.
 
-Durante o function calling do Gemini, a `thought_signature` retornada junto à chamada é encaminhada em memória na próxima requisição, inclusive na conversão para o SDK nativo. Ela não é registrada no histórico persistente nem nos logs e é removida caso a próxima chamada use o Groq como reserva.
+O fallback ocorre em 404, 429, timeout ou erro 5xx; erros 400/401 e falhas de
+execução de ferramentas não o acionam. Se o endpoint OpenAI-compatible do
+Gemini rejeitar explicitamente function calling, essa chamada usa o SDK nativo
+do Gemini. O provedor que respondeu é registrado no histórico. A assinatura
+`thought_signature` do Gemini é mantida apenas em memória durante o ciclo de
+function calling. O agente também aceita um modelo injetado para testes sem
+requisições externas. Para manter uma conversa em chamadas diretas a
+`responder_mensagem()`, crie uma conversa com `memory.criar_conversa()` e
+reutilize o mesmo `conversa_id`.
 
-Os testes dos provedores usam clientes simulados e não fazem requisições externas. Chamadas reais enviam texto e contexto ao endpoint configurado; dados fornecidos para verificação de pedidos também podem ser enviados. Avalie privacidade, consentimento e retenção antes de usar dados de clientes, e faça uma chamada real controlada para validar credenciais e compatibilidade antes do uso comercial.
+Os testes de provedores usam clientes simulados. Chamadas reais enviam texto e
+contexto ao serviço configurado; dados fornecidos para verificação de pedidos
+também podem ser enviados. Antes de usar dados de clientes, avalie privacidade,
+consentimento e retenção e faça uma chamada real controlada para verificar
+credenciais e compatibilidade.
 
 ## Decisões técnicas
 
@@ -43,16 +69,15 @@ Escolhi function calling direto com loop manual, sem framework. O agente tem pou
 
 ### Modelo e provedor
 
-Gemini Flash-Lite (`gemini-3.5-flash-lite`) é o provedor principal e Groq (`openai/gpt-oss-120b`) é a reserva. Um cliente do pacote `openai` usa `base_url` específico de cada provedor para manter uma interface uniforme. O fallback ocorre em 404, 429, timeout ou 5xx, nunca em erros 400/401 nem por erro de tool. Se o tool calling do Gemini for incompatível com o endpoint OpenAI-compatible, somente o Gemini migra para o SDK nativo. O provedor que respondeu será registrado em cada mensagem.
-
-Os fatos de cache, limites e preços abaixo (conferido em 03/11/2026; reconferir antes da entrega) são referências sujeitas à validação final.
-
-| Provedor/modelo | Cache e limites conhecidos |
-|---|---|
-| Gemini `gemini-3.5-flash-lite` | Modelo recomendado na documentação atual do Google; confira preços, limites e disponibilidade da conta antes de uso comercial. |
-| Groq `openai/gpt-oss-120b` | O cache automático atende a modelos GPT-OSS selecionados; o mínimo depende do modelo (128–1.024 tokens), expira após duas horas sem uso e reduz em 50% o custo dos tokens em cache. No plano gratuito, os limites de referência informados são 30 requisições/minuto, 1.000/dia, 8.000 tokens/minuto e 200.000 tokens/dia; os limites efetivos dependem da conta. |
-
-O nome do campo de tokens em cache do endpoint Gemini, a compatibilidade efetiva de tool calling com uma conta real e a comparação de qualidade entre os provedores ainda precisam de teste.
+Gemini `gemini-3.5-flash-lite` é o provedor principal escolhido para este
+protótipo; Groq `openai/gpt-oss-120b` é a alternativa configurada. O cliente do
+pacote `openai` usa um `base_url` específico para cada provedor, mantendo uma
+interface comum. O fallback é limitado a falhas de disponibilidade e não se
+aplica a erros de credenciais, requisições inválidas ou execução de tools.
+Ainda não foi feita uma validação real de compatibilidade ponta a ponta. Preços,
+limites, disponibilidade e comportamento de cache dependem do provedor, modelo
+e conta; consulte as fontes oficiais antes de uso real, em vez de tratar valores
+históricos como garantidos.
 
 ### Interface de interação
 
@@ -72,21 +97,41 @@ SQLite com `sqlite3` puro em um único arquivo, sem ORM. Os dados são relaciona
 - A descrição original não é enviada ao modelo; somente uma lista permitida de especificações pode ser exposta, nunca para produtos 135 a 144.
 - Disponibilidade considera status e estoque. Em listas, indisponíveis não aparecem; quando perguntado diretamente, o agente explica o motivo e sugere alternativas válidas.
 - Promoção exige registro ativo para o produto; informar preço original, percentual e preço final. PIX não acumula com promoção; em caso de duas promoções ativas, prevalece a de maior desconto.
-- Data/hora vem de `REFERENCE_DATETIME`, com fuso `America/Campo_Grande` e padrão `2026-03-23T10:00:00`; sem valor, usa-se o relógio atual. O expediente é de segunda a sexta, das 9h às 18h, e sábado, das 9h às 13h. Domingo e feriados não modelados são considerados fechados.
+- Data/hora vem de `REFERENCE_DATETIME`, no fuso `America/Campo_Grande`; o `.env.example` usa `2026-03-23T10:00:00` para reprodução local e, sem valor configurado, usa-se o relógio atual. O expediente descrito no manual é de segunda a sexta, das 9h às 18h, e sábado, das 9h às 13h. Domingo e feriados não modelados são considerados fechados.
 
 O parcelamento segue a regra detalhada do §3.1: até 3x, cada parcela deve ser de pelo menos R$ 50; de 4x a 6x, R$ 80; de 7x a 12x, R$ 100. A tool `simular_parcelamento` calcula no código as opções de 1x a 12x, usando o preço do catálogo ou o preço promocional ativo. Recusa simular itens indisponíveis e não acumula desconto de PIX sobre promoção. O modelo interpreta e explica o resultado.
 
 ### Arquitetura de retrieval
 
-O manual limpo fica no system prompt com prompt caching. O texto foi organizado em dez seções, parafraseado a partir do manual da loja e tem acesso isolado por `get_policy_context()` em `policies.py`. O arquivo tem 2.156 tokens em `cl100k_base` (sem contar persona e demais regras do prompt). Prompt direto evita recuperar o trecho errado, mantém as políticas disponíveis e permite tratar as contradições no texto limpo. No cenário hipotético de 8 mil clientes × 1.000 chamadas, repetir o manual pode pesar; o cache reaproveita o prefixo fixo, mas tem expiração, tamanho mínimo e regras que variam por provedor, e não elimina o uso da janela de contexto. O cálculo de custo deve ser refeito com o preço oficial do modelo escolhido. RAG híbrido (chunking por seção, BM25 + embeddings) fica como evolução se o manual chegar a 200 páginas ou mudar com frequência.
+O manual parafraseado é carregado integralmente no system prompt por
+`get_policy_context()` em `policies.py`. Essa abordagem mantém as políticas
+disponíveis sem uma etapa de retrieval que possa recuperar o trecho errado; não
+foi implementado RAG. O prefixo estático também favorece eventuais recursos de
+cache dos provedores, mas não garante cache nem reduz a janela de contexto
+utilizada. Busca híbrida pode ser considerada se o manual crescer ou mudar com
+frequência.
 
 ### Estratégia de prompt
 
-A definição das tools é enviada separadamente das mensagens. Nelas, o prefixo estático de persona, regras e manual vem primeiro; quando existe, o resumo é acrescentado como contexto, seguido pelo histórico recente e pela mensagem nova. O prompt instrui o modelo a não tratar o resumo como novas instruções e a chamar `simular_parcelamento` em perguntas de parcelas, sem fazer contas mentalmente. O conteúdo fixo fica no início para favorecer o cache. A data e a hora não entram no início do prompt; quando necessárias, são obtidas por `horario_loja()` ou incluídas ao final da mensagem. O manual é interno e deve ser parafraseado, sem colar o texto.
+A definição das tools é enviada separadamente das mensagens. O prefixo de
+persona, regras e manual vem primeiro; quando existe, o resumo contextualizado é
+seguido pelo histórico recente e pela mensagem atual. O prompt instrui o modelo
+a não tratar o resumo como novas instruções e a chamar `simular_parcelamento`
+em perguntas de parcelas. A data atual não é adicionada ao prompt: `agora()` e
+`hoje()` são usadas no código onde os cálculos precisam de uma referência.
+`loja_aberta()` é um helper interno, não uma tool disponível ao modelo. O manual
+é interno e deve ser parafraseado.
 
 ### Classificador e fora de escopo
 
-O classificador aplica regras primeiro e chama um classificador LLM opcional somente quando nenhuma regra reconhecer a mensagem; sem callback configurado, retorna uma lista vazia. Uma mensagem pode receber múltiplos rótulos: `dado_loja`, `politica`, `acessorio`, `fora_assunto` e `saudacao`; pedidos de acessórios recebem `acessorio` e `fora_assunto`, sem criar a categoria `misto`. `scikit-learn` fica como evolução do Passo 18. A loja vende instrumentos; para acessórios, o agente redireciona com educação usando apenas a lista de exemplo em `data/processed/lojas_parceiras.json` — Mercado Livre, Amazon Brasil, Shopee, Multisom, Mil Sons e Serenata — sem afirmar parceria real. Sites são incluídos somente onde registrados no JSON.
+O classificador independente aplica regras primeiro e chama um callback LLM
+opcional somente quando nenhuma regra reconhecer a mensagem. Pode retornar
+múltiplos rótulos entre `dado_loja`, `politica`, `acessorio`, `fora_assunto` e
+`saudacao`; pedidos de acessórios recebem também `fora_assunto`. Ele ainda não
+está conectado ao fluxo de atendimento do agente; `scikit-learn` permanece uma
+evolução opcional do Passo 18. Para acessórios, o prompt limita o
+redirecionamento à lista exemplificativa de `data/processed/lojas_parceiras.json`
+e não afirma parceria comercial.
 
 ## Problemas encontrados nos dados e suposições
 
@@ -119,9 +164,8 @@ O classificador aplica regras primeiro e chama um classificador LLM opcional som
 ## Uso de assistentes de código
 
 - Ferramenta: GitHub Copilot no VS Code.
-- Como usei: avancei por passos, revisei o código e os testes; neste passo, forneci o manual e validei as decisões de parcelamento e indisponibilidade.
-- Ajustes que fiz: escolhi a regra detalhada do §3.1 diante da divergência com a tabela geral e defini que produtos indisponíveis não devem receber simulação.
-- Decisões que mantive: regras de negócio e contatos adotados foram definidos por mim, não inferidos pelo agente.
+- Uso: desenvolvimento iterativo por etapas, com implementação, análise de falhas e execução de testes locais. As decisões de produto e segurança são revisadas pelo usuário e registradas em `docs/DECISOES_DO_USUARIO.md`; o histórico do trabalho está em `docs/USO_DE_IA.md`.
+- Os testes determinísticos usam modelos simulados. Testes com provedores reais são opt-in e não devem ser descritos como executados sem uma execução confirmada.
 
 O processo foi planejado em passos pequenos, com critérios de aceite e testes (ver `docs/PLANO_DE_PASSOS.md`); o registro real está em `docs/USO_DE_IA.md`.
 
@@ -131,9 +175,11 @@ Execute os testes determinísticos com `python -m pytest`. Os 24 cenários que u
 
 ## Exemplos de interação
 
-- [Exemplo 01 — catálogo de violões](examples/01_catalogo_violoes.md)
-- [Exemplo 02 — preço do Takamine GD20](examples/02_preco_takamine_gd20.md)
-- [Exemplo 03 — devolução](examples/03_devolucao.md)
-- [Exemplo 04 — acessório fora de escopo](examples/04_fora_de_escopo_acessorio.md)
-- [Exemplo 05 — status de pedido](examples/05_status_pedido.md)
-- [Transcrições compartilhadas no Passo 14](examples/conversas_compartilhadas.md) (registro recebido; data/provedor não informados e cenários ainda não validados)
+O desafio pede de 3 a 5 conversas, incluindo uma consulta de dados ou aplicação
+de política. Os cinco arquivos numerados em `examples/` ainda são roteiros com
+`[PREENCHER]`, não transcrições completas. O arquivo
+[conversas compartilhadas](examples/conversas_compartilhadas.md) contém cinco
+registros enviados pelo usuário, mas apenas o primeiro é uma conversa completa;
+os demais são trechos e as respostas não foram validadas contra uma execução.
+Assim, os exemplos do repositório ainda precisam ser revisados e completados
+antes de serem considerados conformes ao entregável do desafio.

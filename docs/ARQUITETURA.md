@@ -4,7 +4,7 @@
 
 ## Visão geral
 
-O agente recebe mensagens pela CLI, classifica intenções, monta o prompt e conversa com um provedor de LLM por uma interface comum. A camada usa o cliente do pacote `openai` com `base_url` específico para Gemini ou Groq; se o endpoint OpenAI-compatible do Gemini rejeitar explicitamente function calling, usa o SDK nativo do Gemini. O fallback alterna para modelo/endpoint não encontrado (404), limite (429), timeout ou 5xx; erros de autenticação/requisição (4xx exceto 404/429), validação e execução de tools não acionam fallback.
+O agente recebe mensagens pela CLI, monta o prompt e conversa com um provedor de LLM por uma interface comum. O classificador de intenções existe como utilitário independente, mas não está conectado ao fluxo de atendimento. A camada usa o cliente do pacote `openai` com `base_url` específico para Gemini ou Groq; se o endpoint OpenAI-compatible do Gemini rejeitar explicitamente function calling, usa o SDK nativo do Gemini. O fallback alterna para modelo/endpoint não encontrado (404), limite (429), timeout ou 5xx; erros de autenticação/requisição (4xx exceto 404/429), validação e execução de tools não acionam fallback.
 
 O modelo escolhe entre responder com base nas políticas ou chamar tools com parâmetros fixos. As tools consultam o SQLite em modo somente leitura. O histórico e as chamadas são registrados por `memory.py`; acima de 20 mensagens não resumidas, o módulo pode solicitar um resumo via callback, mantendo as 10 mensagens recentes completas e guardando o limite em `conversations.summarized_until_message_id`. As mensagens originais são preservadas.
 
@@ -12,7 +12,6 @@ O modelo escolhe entre responder com base nas políticas ou chamar tools com par
 flowchart LR
     C[Cliente] --> CLI[CLI]
     CLI --> A[agent.py]
-    A --> I[classificar_intencao: rótulos múltiplos]
     A --> P[Prompt: tools → persona + manual → resumo e histórico → mensagem nova]
     P --> L[llm.py: cliente openai]
     L --> G[Gemini gemini-3.5-flash-lite]
@@ -21,7 +20,7 @@ flowchart LR
     G -. fallback em 404, 429, timeout ou 5xx .-> R
     L --> T[Tools]
     T --> DB[(SQLite: leitura)]
-    T --> H[horario_loja e simular_parcelamento]
+    T --> H[simular_parcelamento]
     A --> M[memory.py: histórico e resumo]
     M --> DB
     A --> S[lojas_parceiras.json]
@@ -30,33 +29,32 @@ flowchart LR
 ## Fluxo de uma mensagem
 
 1. A CLI interativa associa cada mensagem à conversa indicada por `--conversa` ou cria uma conversa e mostra seu ID para retomada.
-2. `classificar_intencao()` aplica regras determinísticas; se nenhuma identificar a mensagem, pode chamar um classificador LLM injetado. Sem callback, retorna lista vazia; uma mensagem pode receber vários rótulos.
-3. As definições das tools são enviadas separadamente; as mensagens seguem a ordem: persona, regras e manual → resumo contextual (quando houver) → histórico recente → mensagem nova.
-4. `llm.py` chama o provedor principal via cliente `openai` configurado com o `base_url` correspondente; incompatibilidade explícita de tools no Gemini aciona seu adaptador nativo.
-5. Se houver 404, 429, timeout ou erro 5xx, o agente tenta o provedor reserva. Outros erros 4xx, erros de tools e validação não acionam fallback.
-6. O modelo pode solicitar uma tool. `agent.py` valida os argumentos contra schemas Pydantic, injeta internamente o ID da conversa nas ferramentas de pedido e executa consultas de leitura no SQLite ou cálculo determinístico no código. Erros conhecidos de validação/execução retornam uma estrutura segura ao modelo.
-7. Uma pergunta sobre horário pode usar `horario_loja()`; a data e hora de referência vêm de `agora()` no fuso `America/Campo_Grande`.
-8. Perguntas de parcelamento usam `simular_parcelamento()`; o LLM interpreta o resultado e não calcula as parcelas mentalmente.
-9. Pedidos de acessórios são redirecionados usando somente os nomes e sites constantes em `data/processed/lojas_parceiras.json`, sem afirmar parceria real.
-10. A resposta e o provedor utilizado são registrados. Em conversas longas, o resumo e o limite da mensagem resumida ficam em `conversations.summary` e `conversations.summarized_until_message_id`.
+2. As definições das tools são enviadas separadamente; as mensagens seguem a ordem: persona, regras e manual → resumo contextual (quando houver) → histórico recente → mensagem nova.
+3. `llm.py` chama o provedor principal via cliente `openai` configurado com o `base_url` correspondente; incompatibilidade explícita de tools no Gemini aciona seu adaptador nativo.
+4. Se houver 404, 429, timeout ou erro 5xx, o agente tenta o provedor reserva. Outros erros 4xx, erros de tools e validação não acionam fallback.
+5. O modelo pode solicitar uma tool. `agent.py` valida os argumentos contra schemas Pydantic, injeta internamente o ID da conversa nas ferramentas de pedido e executa consultas de leitura no SQLite ou cálculo determinístico no código. Erros conhecidos de validação/execução retornam uma estrutura segura ao modelo.
+6. As políticas de horário estão no manual carregado pelo prompt. `loja_aberta()` é um helper interno de data/hora; não há uma tool `horario_loja()` no fluxo atual.
+7. Perguntas de parcelamento usam `simular_parcelamento()`; o LLM interpreta o resultado e não calcula as parcelas mentalmente.
+8. Pedidos de acessórios são redirecionados usando somente os nomes e sites constantes em `data/processed/lojas_parceiras.json`, sem afirmar parceria real.
+9. A resposta e o provedor utilizado são registrados. Em conversas longas, o resumo e o limite da mensagem resumida ficam em `conversations.summary` e `conversations.summarized_until_message_id`.
 
 ## Responsabilidade por módulo
 
-- `config.py`: configurações, `agora()`, `hoje()`, `horario_loja()` e fuso da loja.
+- `config.py`: configurações, `agora()`, `hoje()`, `loja_aberta()` e fuso da loja.
 - `db.py`: conexões SQLite, authorizer e separação de leitura/escrita.
 - `schema.sql`: tabelas da loja e do agente, incluindo campos de resumo da conversa.
 - `schemas.py`: modelos Pydantic para argumentos das tools.
 - `prompts.py`: persona, regras, fora de escopo, formato e composição do resumo/histórico no contexto enviado ao modelo.
 - `llm.py`: clientes OpenAI-compatible, adaptação nativa para function calling do Gemini em caso de incompatibilidade e fallback transitório.
 - `agent.py`: loop limitado de tool calling e resposta final, com interface de modelo injetável para testes independentes dos provedores.
-- `intent.py`: classificação por regras com múltiplos rótulos e LLM apenas em caso de dúvida.
+- `intent.py`: classificação independente por regras com múltiplos rótulos e LLM apenas em caso de dúvida; não é chamada pelo fluxo atual do agente.
 - `policies.py`: único acesso ao manual por `get_policy_context()`; políticas são mantidas em `data/processed/politicas.md`.
 - `memory.py`: criação de conversas, gravação e recuperação isolada de mensagens/tool calls, redação de argumentos sensíveis e coordenação de resumos por callback injetável.
 - `cli.py`: interface interativa de linha de comando, opções de conversa/debug e apresentação textual das respostas.
 - `tools/`: tools de catálogo, promoções, pedidos e parcelamento determinístico (`simular_parcelamento`).
 - `data/processed/lojas_parceiras.json`: lista explicitamente exemplificativa para redirecionamentos de acessórios.
 
-`horario_loja()` aplica o horário descrito no §2: segunda a sexta, das 09:00 às 18:00; sábado, das 09:00 às 13:00; domingo fechado. Feriados não são modelados.
+`loja_aberta()` aplica o horário descrito no §2: segunda a sexta, das 09:00 às 18:00; sábado, das 09:00 às 13:00; domingo fechado. Feriados não são modelados. Esse helper não é chamado pelo agente para responder mensagens.
 
 ## Modelo de dados
 
@@ -77,7 +75,7 @@ O modelo principal é Gemini Flash-Lite (`gemini-3.5-flash-lite`) e o reserva é
 - Tools usam conexão somente leitura e consultas com colunas listadas.
 - `set_authorizer` bloqueia acesso a `products.description_raw`; a verificação de identidade pode ler `customers.email`.
 - `customer_id` verificado é mantido na sessão e não é argumento de tool.
-- Telefone, e-mail e `description_raw` não são devolvidos em respostas de tools.
+- `description_raw` é bloqueado e os campos de telefone/e-mail não são devolvidos pelas tools. O motivo de cancelamento vem de `orders.notes` e é encaminhado como texto; antes de alimentar essa coluna com dados reais, é necessário filtrar dados pessoais.
 - Argumentos de tools são validados com Pydantic; erros retornam estrutura controlada.
 - Escritas de histórico ficam isoladas em `memory.py`.
 - Data/hora é obtida por `agora()`/`hoje()`, evitando relógios locais espalhados pelo código.

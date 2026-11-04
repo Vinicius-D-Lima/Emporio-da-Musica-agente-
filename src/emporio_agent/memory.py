@@ -21,6 +21,7 @@ _SENSITIVE_ARGUMENT_KEYS = frozenset(
 _EMAIL_PATTERN = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
 _PHONE_PATTERN = re.compile(
     r"(?<!\w)(?:\+?55\s*)?(?:\(\d{2}\)\s*|\d{2}\s)\d{4,5}[-.\s]\d{4}(?!\w)"
+    r"|(?<!\d)(?:\+?55)?\d{10,11}(?!\d)"
 )
 
 
