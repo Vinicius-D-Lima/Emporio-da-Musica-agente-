@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 
 import httpx
@@ -85,9 +86,11 @@ def test_cliente_usa_base_url_modelo_e_limite_de_retentativas_por_provedor() -> 
 
 
 def test_converte_resposta_e_chamada_de_ferramenta_openai_compatible() -> None:
+    metadata = {"google": {"thought_signature": "c2lnbmF0dXJl"}}
     chamada = SimpleNamespace(
         id="call-1",
         function=SimpleNamespace(name="buscar_produtos", arguments='{"query":"gd20"}'),
+        extra_content=metadata,
     )
     cliente = _FakeClient(_resposta(content=None, tool_calls=[chamada]))
     modelo = llm.criar_modelo(
@@ -105,8 +108,88 @@ def test_converte_resposta_e_chamada_de_ferramenta_openai_compatible() -> None:
     assert resposta.tool_calls[0].call_id == "call-1"
     assert resposta.tool_calls[0].name == "buscar_produtos"
     assert resposta.tool_calls[0].arguments == '{"query":"gd20"}'
+    assert resposta.tool_calls[0].provider_metadata == metadata
     assert cliente.argumentos[0]["model"] == "gemini-3.5-flash-lite"
     assert "tools" in cliente.argumentos[0]
+
+
+def test_envia_metadata_da_chamada_no_proximo_request_openai_compatible() -> None:
+    mensagens = [
+        {"role": "user", "content": "Procure o GD20"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call-1",
+                    "type": "function",
+                    "function": {
+                        "name": "buscar",
+                        "arguments": '{"query":"gd20"}',
+                    },
+                    "extra_content": {
+                        "google": {"thought_signature": "c2lnbmF0dXJl"}
+                    },
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call-1",
+            "name": "buscar",
+            "content": '{"status":"success"}',
+        },
+    ]
+    cliente = _FakeClient(_resposta(content="Encontrei o GD20"))
+    modelo = llm.criar_modelo(
+        ajustes=_configuracao(fallback=None),
+        client_factory=lambda **kwargs: cliente,
+    )
+
+    modelo(mensagens, [])
+
+    assert cliente.argumentos[0]["messages"] == mensagens
+
+
+def test_fallback_groq_nao_recebe_metadata_especifica_do_gemini() -> None:
+    erro = RateLimitError(
+        "limite",
+        response=httpx.Response(429, request=httpx.Request("POST", "https://test")),
+        body={},
+    )
+    chamada = {
+        "id": "call-1",
+        "type": "function",
+        "function": {"name": "buscar", "arguments": '{"query":"gd20"}'},
+        "extra_content": {"google": {"thought_signature": "c2lnbmF0dXJl"}},
+    }
+    mensagens = [
+        {"role": "assistant", "content": None, "tool_calls": [chamada]}
+    ]
+    clientes = {
+        "gemini": _FakeClient(erro),
+        "groq": _FakeClient(_resposta(content="Resposta da reserva")),
+    }
+    modelo = llm.criar_modelo(
+        ajustes=_configuracao(),
+        client_factory=lambda *, api_key, **kwargs: clientes[
+            "gemini" if api_key.startswith("gemini") else "groq"
+        ],
+    )
+
+    resposta = modelo(mensagens, [])
+
+    mensagens_groq = clientes["groq"].argumentos[0]["messages"]
+    assert resposta.provider == "groq"
+    assert "extra_content" not in mensagens_groq[0]["tool_calls"][0]
+    assert "extra_content" in mensagens[0]["tool_calls"][0]
+
+
+def test_metadata_de_thought_signature_invalida_falha_explicitamente() -> None:
+    with pytest.raises(llm.LLMError, match="thought signature inválida"):
+        llm._google_thought_signature(
+            {"google": {"thought_signature": "não-é-base64"}}
+        )
 
 
 def test_fallback_ocorre_em_429_e_registra_o_provedor_reserva(
@@ -195,6 +278,100 @@ def test_erro_nao_transitorio_nao_chama_provedor_reserva() -> None:
     assert clientes["groq"].argumentos == []
 
 
+def test_debug_registra_detalhe_tecnico_sem_expor_dados_da_requisicao(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    email = "cliente@example.com"
+    pergunta = f"Quero consultar o pedido de {email} número 12345678"
+    corpo = {
+        "error": {
+            "message": f"Invalid tool schema for request: {pergunta}; gemini-key-test",
+            "code": "INVALID_ARGUMENT",
+            "type": "invalid_request",
+            "details": "corpo interno não deve ser registrado",
+        }
+    }
+    erro = BadRequestError(
+        "Bad request",
+        response=httpx.Response(
+            400,
+            json=corpo,
+            request=httpx.Request("POST", "https://test"),
+        ),
+        body=corpo,
+    )
+    clientes = {"gemini": _FakeClient(erro), "groq": _FakeClient(_resposta())}
+    modelo = llm.criar_modelo(
+        ajustes=_configuracao(),
+        client_factory=lambda *, api_key, **kwargs: clientes[
+            "gemini" if api_key.startswith("gemini") else "groq"
+        ],
+    )
+
+    with caplog.at_level(logging.DEBUG, logger="emporio_agent.llm"):
+        with pytest.raises(llm.LLMError, match="BadRequestError"):
+            modelo([{"role": "user", "content": pergunta}], [])
+
+    assert "INVALID_ARGUMENT" in caplog.text
+    assert "Invalid tool schema" in caplog.text
+    assert pergunta not in caplog.text
+    assert email not in caplog.text
+    assert "12345678" not in caplog.text
+    assert "gemini-key-test" not in caplog.text
+    assert "corpo interno não deve ser registrado" not in caplog.text
+    assert clientes["groq"].argumentos == []
+
+
+def test_debug_extrai_detalhes_whitelisted_do_corpo_http(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    corpo_http = {
+        "error": {
+            "code": 400,
+            "status": "INVALID_ARGUMENT",
+            "message": "Error code: 400",
+            "details": [
+                {
+                    "fieldViolations": [
+                        {
+                            "field": "tools[0].function.parameters",
+                            "description": "Unsupported JSON Schema keyword: anyOf",
+                            "requestBody": "não deve aparecer",
+                        }
+                    ]
+                }
+            ],
+        },
+        "requestBody": "não deve aparecer",
+    }
+    resposta_http = httpx.Response(
+        400,
+        json=corpo_http,
+        request=httpx.Request("POST", "https://test"),
+    )
+    erro = BadRequestError(
+        "Error code: 400",
+        response=resposta_http,
+        body={"error": {"message": "Error code: 400"}},
+    )
+    clientes = {"gemini": _FakeClient(erro), "groq": _FakeClient(_resposta())}
+    modelo = llm.criar_modelo(
+        ajustes=_configuracao(),
+        client_factory=lambda *, api_key, **kwargs: clientes[
+            "gemini" if api_key.startswith("gemini") else "groq"
+        ],
+    )
+
+    with caplog.at_level(logging.DEBUG, logger="emporio_agent.llm"):
+        with pytest.raises(llm.LLMError):
+            modelo([{"role": "user", "content": "Procure uma guitarra"}], [])
+
+    assert "INVALID_ARGUMENT" in caplog.text
+    assert "Unsupported JSON Schema keyword: anyOf" in caplog.text
+    assert "requestBody" not in caplog.text
+    assert "não deve aparecer" not in caplog.text
+
+
 def test_fallback_nao_ocorre_em_erro_de_autenticacao() -> None:
     erro = APIStatusError(
         "não autorizado",
@@ -238,6 +415,7 @@ def test_gemini_migra_para_sdk_nativo_so_em_incompatibilidade_de_tools() -> None
                                         name="buscar",
                                         args={"query": "gd20"},
                                     ),
+                                    thought_signature=b"signature",
                                 )
                             ]
                         )
@@ -277,6 +455,9 @@ def test_gemini_migra_para_sdk_nativo_so_em_incompatibilidade_de_tools() -> None
     assert resposta.provider == "gemini"
     assert resposta.tool_calls[0].name == "buscar"
     assert resposta.tool_calls[0].arguments == '{"query": "gd20"}'
+    assert resposta.tool_calls[0].provider_metadata == {
+        "google": {"thought_signature": "c2lnbmF0dXJl"}
+    }
     assert chamada_nativa[0]["model"] == "gemini-3.5-flash-lite"
 
 
@@ -296,6 +477,9 @@ def test_adaptador_nativo_preserva_chamada_e_resultado_de_tool_no_historico() ->
                             "name": "buscar",
                             "arguments": '{"query":"gd20"}',
                         },
+                        "extra_content": {
+                            "google": {"thought_signature": "c2lnbmF0dXJl"}
+                        },
                     }
                 ],
             },
@@ -311,6 +495,7 @@ def test_adaptador_nativo_preserva_chamada_e_resultado_de_tool_no_historico() ->
     assert system == "Regras"
     assert contents[1].role == "model"
     assert contents[1].parts[0].function_call.name == "buscar"
+    assert contents[1].parts[0].thought_signature == b"signature"
     assert contents[2].parts[0].function_response.name == "buscar"
     assert contents[2].parts[0].function_response.response == {
         "result": {"status": "success"}

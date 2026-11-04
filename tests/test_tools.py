@@ -268,6 +268,45 @@ def test_produto_sem_promocao_retorna_preco_de_tabela_e_pix(
     assert produto["pix_discount_applied"] is True
 
 
+@pytest.mark.parametrize("query", ["gd20", "GD-20", "takamine gd20"])
+def test_promocoes_ativas_encontra_preco_por_nome_ou_modelo(
+    banco_catalogo: Path, query: str
+) -> None:
+    resultado = promotions.promocoes_ativas(query=query)
+
+    assert resultado["status"] == "success"
+    assert resultado["total"] == 1
+    produto = resultado["products"][0]
+    assert produto["product_id"] == 95
+    assert produto["name"] == "Takamine GD20 Dreadnought Natural"
+    assert produto["original_price_brl"] == 2199.0
+    assert produto["promotion"] is None
+
+
+def test_promocoes_ativas_pede_desambiguacao_sem_expor_precos(
+    banco_catalogo: Path,
+) -> None:
+    resultado = promotions.promocoes_ativas(query="Takamine")
+
+    assert resultado["status"] == "ambiguous"
+    assert resultado["total"] > 1
+    assert resultado["candidates"]
+    assert all(
+        set(candidato) == {"product_id", "name"}
+        for candidato in resultado["candidates"]
+    )
+    assert "products" not in resultado
+
+
+def test_promocoes_ativas_por_nome_inexistente_retorna_not_found(
+    banco_catalogo: Path,
+) -> None:
+    resultado = promotions.promocoes_ativas(query="Modelo inexistente XYZ-987654")
+
+    assert resultado["status"] == "not_found"
+    assert resultado["query"] == "Modelo inexistente XYZ-987654"
+
+
 def test_promocoes_inativas_nao_aparecem_nem_no_filtro_por_produto(
     banco_catalogo: Path,
 ) -> None:
@@ -309,12 +348,14 @@ def test_produto_inexistente_nao_tem_promocao(
     [
         {"product_id": 0},
         {"product_id": -1},
+        {"query": ""},
+        {"product_id": 95, "query": "GD20"},
         {"limit": 0},
         {"limit": 51},
     ],
 )
 def test_promocoes_validam_argumentos_com_pydantic(
-    argumentos: dict[str, int],
+    argumentos: dict[str, object],
 ) -> None:
     with pytest.raises(ValidationError):
         promotions.promocoes_ativas(**argumentos)
@@ -532,6 +573,12 @@ def test_template_de_prompt_define_persona_regras_e_uso_obrigatorio_da_tool() ->
     assert "Regras de negócio:" in template
     assert "Fora de escopo:" in template
     assert "Formato esperado:" in template
+    assert "Só informe valores monetários" in template
+    assert "repita exatamente o valor confirmado anteriormente" in template
+    assert "`promocoes_ativas`" in template
+    assert "mais de um produto correspondente" in template
+    assert "Amazon Brasil" in template
+    assert "Não repita a verificação" in template
     assert "chame `simular_parcelamento`" in template
     assert "Nunca calcule parcelas mentalmente" in template
     assert "Nunca revele ou confirme dados de outro cliente" in template

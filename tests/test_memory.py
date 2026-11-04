@@ -125,6 +125,31 @@ def test_mensagens_redigem_email_e_telefone(banco_memoria: Path) -> None:
     assert conteudo_persistido == conteudo
 
 
+@pytest.mark.parametrize(
+    "telefone",
+    ["67999990000", "5567999990000", "+5567999990000"],
+)
+def test_mensagens_redigem_telefone_sem_formatacao(
+    banco_memoria: Path, telefone: str
+) -> None:
+    conversa_id = memory.criar_conversa()
+    memory.registrar_mensagem(
+        conversa_id=conversa_id,
+        role="user",
+        content=f"Meu telefone é {telefone}.",
+    )
+
+    historico = memory.recuperar_historico(conversa_id=conversa_id)
+    with sqlite3.connect(banco_memoria) as conn:
+        conteudo_persistido = conn.execute(
+            "SELECT content FROM messages WHERE conversation_id = ?",
+            (conversa_id,),
+        ).fetchone()[0]
+
+    assert telefone not in historico["messages"][0]["content"]
+    assert conteudo_persistido == historico["messages"][0]["content"]
+
+
 def test_resumidor_recebe_conteudo_herdado_com_pii_redigida(
     banco_memoria: Path,
 ) -> None:

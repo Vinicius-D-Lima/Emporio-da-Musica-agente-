@@ -6,6 +6,7 @@ from contextlib import closing
 
 from ..db import conn_leitura
 from ..schemas import PromocoesAtivasArgs
+from .products import corresponde_nome
 
 _PIX_DISCOUNT = 0.05
 
@@ -43,11 +44,14 @@ def _preco_do_produto(linha) -> dict[str, object]:
 
 
 def promocoes_ativas(
-    *, product_id: int | None = None, limit: int = 10
+    *,
+    product_id: int | None = None,
+    query: str | None = None,
+    limit: int = 10,
 ) -> dict[str, object]:
-    """Lista promoções ativas ou informa preço normal e PIX para um produto específico."""
+    """Lista promoções ou consulta preços por ID, nome ou modelo do produto."""
     argumentos = PromocoesAtivasArgs.model_validate(
-        {"product_id": product_id, "limit": limit}
+        {"product_id": product_id, "query": query, "limit": limit}
     )
 
     sql = """
@@ -67,12 +71,19 @@ def promocoes_ativas(
     if argumentos.product_id is not None:
         sql += " WHERE p.product_id = ?"
         parametros = (argumentos.product_id,)
-    else:
+    elif argumentos.query is None:
         sql += " WHERE pr.promotion_id IS NOT NULL"
     sql += " ORDER BY p.product_id, pr.discount_percent DESC, pr.promotion_id"
 
     with closing(conn_leitura()) as conn:
         linhas = conn.execute(sql, parametros).fetchall()
+
+    if argumentos.query is not None:
+        linhas = [
+            linha
+            for linha in linhas
+            if corresponde_nome(argumentos.query, linha["name"])
+        ]
 
     if argumentos.product_id is not None and not linhas:
         return {
@@ -86,6 +97,27 @@ def promocoes_ativas(
         por_produto.setdefault(linha["product_id"], linha)
 
     produtos = list(por_produto.values())
+    if argumentos.query is not None and not produtos:
+        return {
+            "status": "not_found",
+            "message": "Nenhum produto corresponde ao nome ou modelo informado.",
+            "query": argumentos.query,
+        }
+    if argumentos.query is not None and len(produtos) > 1:
+        return {
+            "status": "ambiguous",
+            "message": (
+                "O nome ou modelo corresponde a mais de um produto. "
+                "Peça à pessoa para especificar qual deseja consultar."
+            ),
+            "candidates": [
+                {"product_id": produto["product_id"], "name": produto["name"]}
+                for produto in produtos[: argumentos.limit]
+            ],
+            "total": len(produtos),
+            "limit": argumentos.limit,
+        }
+
     total = len(produtos)
     produtos = [
         _preco_do_produto(linha)

@@ -70,6 +70,7 @@ class ToolCall:
     call_id: str
     name: str
     arguments: str
+    provider_metadata: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -108,7 +109,11 @@ _TOOLS: dict[str, _ToolSpec] = {
     "promocoes_ativas": _ToolSpec(
         function=promocoes_ativas,
         arguments=PromocoesAtivasArgs,
-        description="Consulta promoções ativas ou preços atuais de um produto.",
+        description=(
+            "Consulta promoções ativas ou o preço atual de um produto por ID, "
+            "nome ou modelo. Se a busca por nome retornar ambiguidade, peça "
+            "mais detalhes antes de informar um preço."
+        ),
     ),
     "simular_parcelamento": _ToolSpec(
         function=simular_parcelamento,
@@ -242,6 +247,10 @@ def _validar_resposta_modelo(resposta: ModelResponse) -> ModelResponse:
             or not isinstance(chamada.arguments, str)
         ):
             raise TypeError("A resposta contém uma chamada de ferramenta inválida.")
+        if chamada.provider_metadata is not None:
+            if not isinstance(chamada.provider_metadata, Mapping):
+                raise TypeError("A metadata da ferramenta precisa ser um objeto.")
+            _json_texto(dict(chamada.provider_metadata))
     return resposta
 
 
@@ -297,6 +306,11 @@ def _mensagem_assistente_com_tools(resposta: ModelResponse) -> ModelMessage:
                     "name": chamada.name,
                     "arguments": chamada.arguments,
                 },
+                **(
+                    {"extra_content": dict(chamada.provider_metadata)}
+                    if chamada.provider_metadata is not None
+                    else {}
+                ),
             }
             for chamada in resposta.tool_calls
         ],

@@ -102,10 +102,25 @@ def test_function_call_executa_tool_e_devolve_resultado_ao_modelo(
             assert len(tools) == 6
             return agent.ModelResponse(
                 None,
-                (_tool_call("buscar_produtos", {"query": "gd20"}),),
+                (
+                    agent.ToolCall(
+                        call_id="call-1",
+                        name="buscar_produtos",
+                        arguments='{"query":"gd20"}',
+                        provider_metadata={
+                            "google": {"thought_signature": "c2lnbmF0dXJl"}
+                        },
+                    ),
+                ),
                 provider="groq",
             )
         assert tools
+        assistant_message = next(
+            item for item in requests[-1] if item["role"] == "assistant"
+        )
+        assert assistant_message["tool_calls"][0]["extra_content"] == {
+            "google": {"thought_signature": "c2lnbmF0dXJl"}
+        }
         tool_message = requests[-1][-1]
         assert tool_message["role"] == "tool"
         assert tool_message["tool_call_id"] == "call-1"
@@ -134,6 +149,7 @@ def test_function_call_executa_tool_e_devolve_resultado_ao_modelo(
         "assistant",
         "assistant",
     ]
+    assert "thought_signature" not in json.dumps(historico)
 
 
 def test_erro_de_validacao_e_repassado_sem_valores_informados(

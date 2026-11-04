@@ -41,12 +41,32 @@ class DetalhesProdutoArgs(BaseModel):
 
 
 class PromocoesAtivasArgs(BaseModel):
-    """Argumentos para consultar promoções ativas."""
+    """Argumentos para consultar promoções ou preço de um produto."""
 
     model_config = ConfigDict(extra="forbid")
 
     product_id: int | None = Field(default=None, ge=1)
+    query: str | None = Field(
+        default=None,
+        description="Nome ou modelo do produto para localizar e consultar seu preço",
+    )
     limit: int = Field(default=10, ge=1, le=50)
+
+    @field_validator("query")
+    @classmethod
+    def normalizar_query(cls, query: str | None) -> str | None:
+        if query is None:
+            return None
+        query = query.strip()
+        if not query:
+            raise ValueError("O termo de busca não pode ser vazio.")
+        return query
+
+    @model_validator(mode="after")
+    def validar_origem_do_produto(self) -> PromocoesAtivasArgs:
+        if self.product_id is not None and self.query is not None:
+            raise ValueError("Informe product_id ou query, não ambos.")
+        return self
 
 
 class VerificarClienteArgs(BaseModel):
