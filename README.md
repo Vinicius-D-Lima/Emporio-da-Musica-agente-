@@ -132,3 +132,4 @@ O processo foi planejado em passos pequenos, com critérios de aceite e testes (
 - [Exemplo 03 — devolução](examples/03_devolucao.md)
 - [Exemplo 04 — acessório fora de escopo](examples/04_fora_de_escopo_acessorio.md)
 - [Exemplo 05 — status de pedido](examples/05_status_pedido.md)
+- [Transcrições compartilhadas no Passo 14](examples/conversas_compartilhadas.md) (registro recebido; data/provedor não informados e cenários ainda não validados)
