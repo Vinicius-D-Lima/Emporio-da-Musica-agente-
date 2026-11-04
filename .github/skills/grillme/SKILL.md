@@ -20,14 +20,12 @@ Ajude o usuário a fortalecer uma ideia, plano, requisito ou decisão fazendo pe
 7. Use cenários concretos, dependências, falhas e casos extremos para testar escolhas quando isso puder mudar a implementação. Faça uma pergunta de cada vez e não repita perguntas já respondidas.
 8. Continue a conversa sobre a mesma decisão até o usuário demonstrar que entendeu os trade-offs e confirmar que deseja mantê-la, ou até pedir para parar. Não transforme isso em interrogatório, não tente vencer a discussão e não exija justificativas adicionais depois de uma confirmação informada.
 9. Se o usuário disser "não sei", não invente uma decisão. Explique as alternativas e suas consequências; registre a escolha como aberta caso ele prefira não decidir.
-10. Após a confirmação, registre a decisão em `docs/DECISOES_DO_USUARIO.md`, incluindo tema, decisão final, motivo informado pelo usuário, opções ou riscos considerados e pendências. Distinga claramente:
-    - o que o usuário escolheu;
-    - o motivo que ele próprio explicou;
-    - recomendações, riscos ou consequências apontados pelo assistente;
-    - dúvidas que permanecem abertas.
-11. Não atribua ao usuário uma justificativa que ele não deu. Se ele não explicar o motivo ou delegar a decisão ao assistente, registre isso explicitamente como "motivo não informado" ou "decisão delegada ao assistente", e descreva a recomendação separadamente.
-12. Não implemente, edite arquivos do produto nem encerre com uma solução prematura enquanto houver decisões importantes sem confirmação. A atualização deste registro de decisões só ocorre após confirmação do usuário.
-13. Ao encerrar, apresente de forma concisa:
+10. Após a confirmação, registre a decisão em `docs/DECISOES_DO_USUARIO.md` usando exatamente os campos definidos abaixo. Separe com clareza a decisão do usuário, as palavras que ele realmente usou e as análises do assistente.
+11. Em **Suas palavras**, copie literalmente a resposta do usuário que explica o motivo. Corrija somente ortografia e coerência, preservando o sentido e sem acrescentar argumentos. Se o usuário não informou um motivo, escreva exatamente **"não informado"**. Não transforme a opção escolhida em uma justificativa.
+12. Em **Análise do assistente**, registre alternativas, consequências e trade-offs considerados pelo assistente. Em **Riscos e pendências (assistente)**, registre riscos e questões em aberto identificados pelo assistente. Não atribua esses conteúdos ao usuário.
+13. Se a decisão foi delegada ao assistente, registre isso no campo **Decisão** e não invente uma justificativa do usuário; em **Suas palavras**, escreva **"não informado"** se ele não explicou um motivo.
+14. Não implemente, edite arquivos do produto nem encerre com uma solução prematura enquanto houver decisões importantes sem confirmação. A atualização deste registro de decisões só ocorre após confirmação do usuário.
+15. Ao encerrar, apresente de forma concisa:
     - decisões confirmadas;
     - motivos informados pelo usuário;
     - recomendações e riscos considerados;
@@ -38,13 +36,12 @@ Ajude o usuário a fortalecer uma ideia, plano, requisito ou decisão fazendo pe
 
 Para cada decisão confirmada em `docs/DECISOES_DO_USUARIO.md`, use uma entrada com:
 
-- **Tema**
-- **Decisão confirmada**
-- **Motivo informado pelo usuário**
-- **Alternativas e trade-offs discutidos**
-- **Riscos ou pendências**
+- **Decisão:** resumo claro da escolha, sem atribuir a ela um motivo que não foi declarado.
+- **Suas palavras (literal, copiado da sua resposta; se não deu motivo: "não informado"):** reproduza as palavras do usuário que explicam o motivo; corrija somente a ortografia e a coerência.
+- **Análise do assistente (alternativas e trade-offs):** alternativas e consequências avaliadas pelo assistente.
+- **Riscos e pendências (assistente):** riscos e questões em aberto apontados pelo assistente.
 
-Escreva em português, mantenha o registro conciso e atualize uma entrada existente quando o usuário revisar uma decisão, preservando a indicação de que ela foi substituída.
+Use um título com data e assunto para cada entrada. Escreva em português, mantenha o registro conciso e atualize uma entrada existente quando o usuário revisar uma decisão, preservando a indicação de que ela foi substituída. Não fabrique citações retrospectivas: se as palavras originais do usuário não estiverem disponíveis, escreva **"não informado"** nesse campo.
 
 ## Restrições
 

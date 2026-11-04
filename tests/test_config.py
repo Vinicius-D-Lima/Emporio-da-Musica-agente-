@@ -17,6 +17,8 @@ def ambiente_configurado(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_FALLBACK", "groq")
     monkeypatch.setenv("GEMINI_API_KEY", "chave-gemini-teste")
     monkeypatch.setenv("GROQ_API_KEY", "chave-groq-teste")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+    monkeypatch.setenv("GROQ_MODEL", "openai/gpt-oss-120b")
     monkeypatch.setenv("REFERENCE_DATETIME", "2026-03-23T10:00:00")
 
 
@@ -27,6 +29,8 @@ def test_carrega_provedores_chaves_e_referencia(
 
     assert configuracao.llm_provider == "gemini"
     assert configuracao.llm_fallback == "groq"
+    assert configuracao.gemini_model == "gemini-3.5-flash-lite"
+    assert configuracao.groq_model == "openai/gpt-oss-120b"
     assert configuracao.gemini_api_key == "chave-gemini-teste"
     assert configuracao.groq_api_key == "chave-groq-teste"
     assert configuracao.reference_datetime == datetime(

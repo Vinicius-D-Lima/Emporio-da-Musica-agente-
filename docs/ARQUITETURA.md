@@ -4,7 +4,7 @@
 
 ## Visão geral
 
-O agente recebe mensagens pela CLI, classifica intenções, monta o prompt e conversa com um provedor de LLM por uma interface comum. A camada de provedor usa um cliente do pacote `openai`, configurado com `base_url` específico para Gemini ou Groq. O fallback alterna entre os provedores somente em erro de limite ou indisponibilidade; erros de execução de tools não acionam fallback.
+O agente recebe mensagens pela CLI, classifica intenções, monta o prompt e conversa com um provedor de LLM por uma interface comum. A camada usa o cliente do pacote `openai` com `base_url` específico para Gemini ou Groq; se o endpoint OpenAI-compatible do Gemini rejeitar explicitamente function calling, usa o SDK nativo do Gemini. O fallback alterna para modelo/endpoint não encontrado (404), limite (429), timeout ou 5xx; erros de autenticação/requisição (4xx exceto 404/429), validação e execução de tools não acionam fallback.
 
 O modelo escolhe entre responder com base nas políticas ou chamar tools com parâmetros fixos. As tools consultam o SQLite em modo somente leitura. O histórico e as chamadas são registrados por `memory.py`; acima de 20 mensagens não resumidas, o módulo pode solicitar um resumo via callback, mantendo as 10 mensagens recentes completas e guardando o limite em `conversations.summarized_until_message_id`. As mensagens originais são preservadas.
 
@@ -15,9 +15,10 @@ flowchart LR
     A --> I[classificar_intencao: rótulos múltiplos]
     A --> P[Prompt: tools → persona + manual → resumo e histórico → mensagem nova]
     P --> L[llm.py: cliente openai]
-    L --> G[Gemini gemini-2.5-flash]
+    L --> G[Gemini gemini-3.5-flash-lite]
+    G -. incompatibilidade explícita de tools .-> GN[SDK nativo Gemini]
     L --> R[Groq openai/gpt-oss-120b]
-    G -. fallback em 429, timeout ou 5xx .-> R
+    G -. fallback em 404, 429, timeout ou 5xx .-> R
     L --> T[Tools]
     T --> DB[(SQLite: leitura)]
     T --> H[horario_loja e simular_parcelamento]
@@ -28,11 +29,11 @@ flowchart LR
 
 ## Fluxo de uma mensagem
 
-1. A mensagem chega pela CLI e é associada a uma conversa.
+1. A CLI interativa associa cada mensagem à conversa indicada por `--conversa` ou cria uma conversa e mostra seu ID para retomada.
 2. `classificar_intencao()` aplica regras determinísticas; se nenhuma identificar a mensagem, pode chamar um classificador LLM injetado. Sem callback, retorna lista vazia; uma mensagem pode receber vários rótulos.
 3. As definições das tools são enviadas separadamente; as mensagens seguem a ordem: persona, regras e manual → resumo contextual (quando houver) → histórico recente → mensagem nova.
-4. `llm.py` chama o provedor principal via cliente `openai` configurado com o `base_url` correspondente.
-5. Se houver 429, timeout ou erro 5xx, o agente tenta o provedor reserva. Erros de tools e validação não acionam fallback.
+4. `llm.py` chama o provedor principal via cliente `openai` configurado com o `base_url` correspondente; incompatibilidade explícita de tools no Gemini aciona seu adaptador nativo.
+5. Se houver 404, 429, timeout ou erro 5xx, o agente tenta o provedor reserva. Outros erros 4xx, erros de tools e validação não acionam fallback.
 6. O modelo pode solicitar uma tool. `agent.py` valida os argumentos contra schemas Pydantic, injeta internamente o ID da conversa nas ferramentas de pedido e executa consultas de leitura no SQLite ou cálculo determinístico no código. Erros conhecidos de validação/execução retornam uma estrutura segura ao modelo.
 7. Uma pergunta sobre horário pode usar `horario_loja()`; a data e hora de referência vêm de `agora()` no fuso `America/Campo_Grande`.
 8. Perguntas de parcelamento usam `simular_parcelamento()`; o LLM interpreta o resultado e não calcula as parcelas mentalmente.
@@ -46,12 +47,12 @@ flowchart LR
 - `schema.sql`: tabelas da loja e do agente, incluindo campos de resumo da conversa.
 - `schemas.py`: modelos Pydantic para argumentos das tools.
 - `prompts.py`: persona, regras, fora de escopo, formato e composição do resumo/histórico no contexto enviado ao modelo.
-- `llm.py`: cliente comum do pacote `openai`, `base_url` por provedor e fallback.
+- `llm.py`: clientes OpenAI-compatible, adaptação nativa para function calling do Gemini em caso de incompatibilidade e fallback transitório.
 - `agent.py`: loop limitado de tool calling e resposta final, com interface de modelo injetável para testes independentes dos provedores.
 - `intent.py`: classificação por regras com múltiplos rótulos e LLM apenas em caso de dúvida.
 - `policies.py`: único acesso ao manual por `get_policy_context()`; políticas são mantidas em `data/processed/politicas.md`.
 - `memory.py`: criação de conversas, gravação e recuperação isolada de mensagens/tool calls, redação de argumentos sensíveis e coordenação de resumos por callback injetável.
-- `cli.py`: interface de linha de comando.
+- `cli.py`: interface interativa de linha de comando, opções de conversa/debug e apresentação textual das respostas.
 - `tools/`: tools de catálogo, promoções, pedidos e parcelamento determinístico (`simular_parcelamento`).
 - `data/processed/lojas_parceiras.json`: lista explicitamente exemplificativa para redirecionamentos de acessórios.
 
@@ -69,7 +70,7 @@ flowchart LR
 
 ## Provedores
 
-O modelo inicial é Gemini Flash (`gemini-2.5-flash`) e o reserva é Groq (`openai/gpt-oss-120b`). A integração prevista usa o pacote `openai` com o endpoint OpenAI-compatible de cada provedor. Caso o tool calling do Gemini seja incompatível, somente esse provedor migra para o SDK nativo, preservando a interface do agente. A compatibilidade será confirmada por teste real antes da entrega.
+O modelo principal é Gemini Flash-Lite (`gemini-3.5-flash-lite`) e o reserva é Groq (`openai/gpt-oss-120b`), ambos configuráveis por variável de ambiente. A implementação usa o pacote `openai` com o endpoint OpenAI-compatible de cada provedor. Se o Gemini retornar erro explícito indicando que function calling não é suportado, somente essa chamada migra para o SDK nativo. A lógica de fallback é testada sem rede; a compatibilidade e as credenciais ainda devem ser verificadas com uma chamada real controlada.
 
 ## Segurança em camadas
 

@@ -10,9 +10,9 @@
 - O loop do agente tem limite de iterações; erros de execução de tools voltam como resultados estruturados e argumentos inválidos voltam como erros de validação.
 - O manual fica no system prompt com prompt caching; RAG é evolução futura.
 - Ordem do prompt: tools → persona + manual → resumo e histórico recente → mensagem nova.
-- Gemini Flash `gemini-2.5-flash` é o provedor principal; Groq `openai/gpt-oss-120b` é a reserva.
+- Gemini Flash-Lite `gemini-3.5-flash-lite` é o provedor principal; Groq `openai/gpt-oss-120b` é a reserva.
 - Um cliente do pacote `openai` usa `base_url` específico por provedor. Se o tool calling do Gemini for incompatível, somente Gemini migra para SDK nativo.
-- Fallback somente para 429, timeout e 5xx; nunca por erro de execução de tool. Registrar o provedor que respondeu em cada mensagem.
+- Fallback para 404, 429, timeout e 5xx; erros 400/401 e de execução de tool não acionam fallback. Registrar o provedor que respondeu em cada mensagem.
 - SQLite com `sqlite3` puro em um único arquivo, sem ORM.
 - Preços em REAL; usar `round(x, 2)` e tolerância de 0.01.
 - `installments` pode ser NULL para PIX, débito e boleto.

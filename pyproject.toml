@@ -11,6 +11,9 @@ dependencies = [
   "pydantic",
   "python-dotenv",
   "tiktoken",
+  "openai",
+  "google-genai",
+  "httpx",
   "pytest",
 ]
 

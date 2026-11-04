@@ -23,6 +23,8 @@ class Configuracao:
     llm_fallback: str | None
     gemini_api_key: str | None
     groq_api_key: str | None
+    gemini_model: str
+    groq_model: str
     reference_datetime: datetime | None
 
 
@@ -66,6 +68,12 @@ def carregar_configuracao() -> Configuracao:
 
     gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip() or None
     groq_api_key = os.getenv("GROQ_API_KEY", "").strip() or None
+    gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()
+    groq_model = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b").strip()
+    if not gemini_model:
+        raise ValueError("GEMINI_MODEL não pode ficar vazio.")
+    if not groq_model:
+        raise ValueError("GROQ_MODEL não pode ficar vazio.")
 
     for nome, selecionado in (("LLM_PROVIDER", provedor), ("LLM_FALLBACK", fallback)):
         if selecionado is None:
@@ -82,6 +90,8 @@ def carregar_configuracao() -> Configuracao:
         llm_fallback=fallback,
         gemini_api_key=gemini_api_key,
         groq_api_key=groq_api_key,
+        gemini_model=gemini_model,
+        groq_model=groq_model,
         reference_datetime=_referencia_do_ambiente(),
     )
 

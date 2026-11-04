@@ -11,10 +11,10 @@ As decisões registradas pelo usuário e os motivos informados durante as conver
 | Function calling direto, loop manual e sem framework. | O projeto tem poucas tools e exige controle explícito das chamadas. |
 | Dados estruturados acessados por tools de parâmetros fixos, sem text-to-SQL. | Evita consultas geradas livremente pelo modelo. |
 | Manual no system prompt com prompt caching; RAG fica como evolução futura. | O manual cabe no contexto e o prefixo fixo pode ser reutilizado. |
-| Gemini Flash `gemini-2.5-flash` como principal e Groq `openai/gpt-oss-120b` como reserva. | Modelos escolhidos para a configuração inicial do projeto. |
+| Gemini Flash-Lite `gemini-3.5-flash-lite` como principal e Groq `openai/gpt-oss-120b` como reserva. | O usuário escolheu atualizar o modelo Gemini após o 404 no modelo anterior, seguindo a documentação atual do Google. |
 | Um cliente do pacote `openai`, com `base_url` específico por provedor. | Mantém uma interface de comunicação uniforme. |
 | Se o tool calling do Gemini for incompatível com o endpoint OpenAI-compatible, somente o Gemini migra para o SDK nativo. | Isola a adaptação ao provedor que apresentar incompatibilidade. |
-| Fallback somente para 429, timeout e erros 5xx; erros de tools não acionam fallback. | Limita o fallback a indisponibilidade ou limite do provedor. |
+| Fallback para indisponibilidade (404), limite (429), timeout e erros 5xx; erros 400/401 não acionam fallback. | Tenta o provedor reserva quando modelo/endpoint não está disponível, sem mascarar credenciais inválidas ou requisições malformadas. |
 | O provedor que respondeu é registrado em cada mensagem. | Permite identificar qual provedor atendeu cada chamada. |
 | SQLite com `sqlite3` puro, um arquivo e sem ORM. | Mantém simples uma base pequena com consultas controladas. |
 | Preços em REAL, arredondamento com `round(x, 2)` e tolerância de 0.01. | Padroniza os cálculos e comparações de valores. |
@@ -25,7 +25,8 @@ As decisões registradas pelo usuário e os motivos informados durante as conver
 | Resumir após mais de 20 mensagens não resumidas, preservando as 10 mais recentes; o resumo é gerado por callback injetável e atualizado somente após sucesso. | Mantém contexto recente, limita o tamanho do histórico e preserva todas as mensagens se o provedor falhar. |
 | Redigir e-mails e telefones nos argumentos de chamadas de tools e textos de mensagens antes de retorná-los ao histórico ou ao resumidor. | Reduz a exposição e a retenção desnecessária de dados pessoais no contexto do agente. |
 | Manter o prompt estático de persona/regras/manual antes do resumo e do histórico; inserir o resumo como contexto delimitado e não como novas instruções. | Preserva a ordem definida, facilita o reaproveitamento do prefixo estático e reduz o risco de instruções citadas no resumo alterarem as regras do agente. |
-| O loop principal usa uma função de modelo injetável, registra schemas de tools e valida chamadas com Pydantic; o provedor real permanece separado. | Permite testar function calling sem credenciais e manter o acoplamento com provedor no módulo LLM. |
+| O loop principal aceita modelo injetável e, por padrão, usa `llm.py` para chamar Gemini/Groq; schemas de tools são validados com Pydantic. | Permite testes sem rede e mantém o acoplamento com provedores separado do agente. |
+| Se o endpoint compatível com OpenAI do Gemini rejeitar explicitamente function calling, a chamada Gemini é adaptada ao SDK nativo; fallback para Groq ocorre em 404, 429, timeout e 5xx, mas não em 400/401. | Preserva o fluxo de tools e limita fallback a indisponibilidade ou falhas transitórias. |
 | Limitar a cinco rodadas de tool calling, permitir uma chamada final sem tools e usar resposta segura se o modelo persistir em chamar ferramenta ou não produzir texto. | Limita consumo e ciclos, mantendo oportunidade de uma resposta natural sem ultrapassar o teto de execução de tools. |
 | Erros conhecidos de ferramentas são devolvidos ao modelo como estrutura segura e registrados como falha; detalhes internos e valores sensíveis não são enviados. | Permite tentativa de recuperação sem expor argumentos ou detalhes operacionais. |
 | `total_brl` é o valor oficial; divergências marcam `total_needs_review` e encaminham o caso à equipe. | O total do pedido não deve ser substituído por uma estimativa com preço atual. |
@@ -33,6 +34,7 @@ As decisões registradas pelo usuário e os motivos informados durante as conver
 | Cliente é identificado por número do pedido e e-mail; `customer_id` verificado fica na sessão. | A identidade não deve vir como argumento do modelo. |
 | O histórico será resumido, mantendo as mensagens recentes completas. | Preserva contexto relevante sem enviar toda a conversa indefinidamente. |
 | O classificador começa com regras e chama callback LLM opcional apenas quando nenhuma regra reconhece a mensagem; sem callback retorna lista vazia. Pode retornar vários rótulos, e pedidos de acessórios recebem `acessorio` + `fora_assunto`. | Mantém classificação previsível, permite integração posterior do provedor sem acoplar o módulo e combina intenções sem criar `misto`. |
+| CLI interativa com uma mensagem por linha, retomada por `--conversa ID` e logs ativados por `--debug`; `/sair`, EOF ou Ctrl+C encerra a sessão. | A interação por terminal mantém o fluxo simples e a compatibilidade com terminais comuns. |
 | As categorias iniciais são `dado_loja`, `politica`, `acessorio`, `fora_assunto` e `saudacao`. | São os rótulos iniciais definidos para o domínio. |
 | `scikit-learn` fica como evolução do Passo 18. | A comparação será feita depois, no mesmo conjunto de teste. |
 | Acessórios serão redirecionados usando uma lista fixa de lojas de exemplo, sem alegar parceria real. | O manual recomenda lojas, mas não fornece uma lista de parceiras. |

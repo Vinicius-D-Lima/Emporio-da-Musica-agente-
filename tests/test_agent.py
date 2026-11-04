@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from emporio_agent import agent, db, memory
+from emporio_agent import agent, db, llm, memory
 from scripts import build_db
 
 
@@ -77,9 +77,17 @@ def test_resposta_final_e_mensagens_ficam_persistidas(
     assert historico["messages"][-1]["provider"] == "gemini"
 
 
-def test_sem_modelo_injetado_informa_que_provedor_nao_esta_configurado() -> None:
-    with pytest.raises(agent.ModelCallError, match="Provedor LLM não configurado"):
-        agent.responder_mensagem("Olá")
+def test_sem_modelo_injetado_usa_o_provedor_configurado(
+    banco_agente: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def modelo(mensagens, tools):
+        return agent.ModelResponse("Resposta do provedor configurado.")
+
+    monkeypatch.setattr(llm, "criar_modelo", lambda: modelo)
+
+    resposta = agent.responder_mensagem("Olá")
+
+    assert resposta == "Resposta do provedor configurado."
 
 
 def test_function_call_executa_tool_e_devolve_resultado_ao_modelo(

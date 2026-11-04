@@ -315,10 +315,14 @@ def responder_mensagem(
         raise ValueError("A mensagem precisa conter texto.")
     mensagem = mensagem.strip()
     if modelo is None:
-        raise ModelCallError(
-            "Provedor LLM não configurado. Injete uma função de modelo; "
-            "a integração com Gemini/Groq será concluída no passo do provedor."
-        )
+        from . import llm
+
+        try:
+            modelo = llm.criar_modelo()
+        except (ImportError, ValueError, llm.LLMError) as exc:
+            raise ModelCallError(
+                f"Não foi possível configurar o provedor LLM: {exc}"
+            ) from exc
 
     conversa = memory.criar_conversa() if conversa_id is None else conversa_id
     historico_atual = memory.recuperar_historico(conversa_id=conversa)

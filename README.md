@@ -10,13 +10,20 @@
 2. Instale o projeto com `pip install -e .`.
 3. Copie `.env.example` para `.env` e configure as chaves dos provedores.
 4. Quando o build estiver implementado/atualizado, gere o banco com `python scripts/build_db.py`.
-5. Inicie a CLI com `python -m emporio_agent.cli`.
+5. Inicie a CLI interativa com `python -m emporio_agent.cli`. Digite uma mensagem
+   por linha; use `/sair`, `Ctrl+D` ou `Ctrl+C` para encerrar. A CLI mostra o ID da conversa
+   criada, que pode ser retomada em outra execução com
+   `python -m emporio_agent.cli --conversa ID`.
+6. Use `--debug` para habilitar logs de depuração:
+   `python -m emporio_agent.cli --debug`.
 
 ### Provedor e configuração
 
-O padrão é Gemini Flash (`gemini-2.5-flash`) e o reserva é Groq (`openai/gpt-oss-120b`). A integração prevista usa o pacote `openai`, configurando `base_url` conforme o provedor. Preencha `GEMINI_API_KEY` e `GROQ_API_KEY` no `.env`; não coloque chaves reais no repositório. `REFERENCE_DATETIME` define a referência no fuso `America/Campo_Grande` e, se necessário, pode ser alterada. Se omitida, o relógio atual é usado.
+O padrão é Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`) e o reserva é Groq (`openai/gpt-oss-120b`). A implementação usa os pacotes `openai` e `google-genai`, configurando o endpoint conforme o provedor. Preencha `GEMINI_API_KEY` e `GROQ_API_KEY` no `.env`; não coloque chaves reais no repositório. `REFERENCE_DATETIME` define a referência no fuso `America/Campo_Grande` e, se necessário, pode ser alterada. Se omitida, o relógio atual é usado.
 
-O loop principal e o function calling podem ser testados com uma função de modelo injetada em `responder_mensagem()`, sem chaves nem chamadas externas. A ligação com Gemini/Groq ainda depende da implementação do Passo 7. Para manter uma conversa entre mensagens, crie uma conversa com `memory.criar_conversa()` e passe o mesmo `conversa_id` às chamadas de `responder_mensagem()`.
+O agente usa por padrão Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`) com Groq (`openai/gpt-oss-120b`) como reserva, ou os modelos configurados em `GEMINI_MODEL` e `GROQ_MODEL`. O fallback ocorre em modelo/endpoint não encontrado (404), limite de requisições (429), timeout ou erro 5xx; erros 400/401 não acionam a reserva para não mascarar erros de requisição ou credenciais. Se o endpoint compatível com OpenAI do Gemini rejeitar explicitamente function calling, essa chamada migra para o SDK nativo do Gemini. O provedor que respondeu fica registrado no histórico. O loop também aceita um modelo injetado para testes locais, sem chaves nem chamadas externas. Para manter uma conversa entre chamadas diretas a `responder_mensagem()`, crie uma conversa com `memory.criar_conversa()` e passe o mesmo `conversa_id`.
+
+Os testes dos provedores usam clientes simulados e não fazem requisições externas. Chamadas reais enviam texto e contexto ao endpoint configurado; dados fornecidos para verificação de pedidos também podem ser enviados. Avalie privacidade, consentimento e retenção antes de usar dados de clientes, e faça uma chamada real controlada para validar credenciais e compatibilidade antes do uso comercial.
 
 ## Decisões técnicas
 
@@ -26,16 +33,16 @@ Escolhi function calling direto com loop manual, sem framework. O agente tem pou
 
 ### Modelo e provedor
 
-Gemini Flash (`gemini-2.5-flash`) é o provedor principal e Groq (`openai/gpt-oss-120b`) é a reserva. Um cliente do pacote `openai` usa `base_url` específico de cada provedor para manter uma interface uniforme. O fallback só ocorre em 429, timeout ou 5xx, nunca por erro de tool. Se o tool calling do Gemini for incompatível com o endpoint OpenAI-compatible, somente o Gemini migra para o SDK nativo. O provedor que respondeu será registrado em cada mensagem.
+Gemini Flash-Lite (`gemini-3.5-flash-lite`) é o provedor principal e Groq (`openai/gpt-oss-120b`) é a reserva. Um cliente do pacote `openai` usa `base_url` específico de cada provedor para manter uma interface uniforme. O fallback ocorre em 404, 429, timeout ou 5xx, nunca em erros 400/401 nem por erro de tool. Se o tool calling do Gemini for incompatível com o endpoint OpenAI-compatible, somente o Gemini migra para o SDK nativo. O provedor que respondeu será registrado em cada mensagem.
 
 Os fatos de cache, limites e preços abaixo (conferido em 03/11/2026; reconferir antes da entrega) são referências sujeitas à validação final.
 
 | Provedor/modelo | Cache e limites conhecidos |
 |---|---|
-| Gemini `gemini-2.5-flash` | O cache implícito vem habilitado nos modelos 2.5 e posteriores, mas não garante economia; o mínimo informado para 2.5 Flash é 2.048 tokens. Cache explícito é oferecido por `generateContent`, não pelo endpoint OpenAI-compatible. Os limites gratuitos por modelo não estão publicados na documentação consultada; o preço oficial do modelo escolhido ainda precisa ser confirmado. |
+| Gemini `gemini-3.5-flash-lite` | Modelo recomendado na documentação atual do Google; confira preços, limites e disponibilidade da conta antes de uso comercial. |
 | Groq `openai/gpt-oss-120b` | O cache automático atende a modelos GPT-OSS selecionados; o mínimo depende do modelo (128–1.024 tokens), expira após duas horas sem uso e reduz em 50% o custo dos tokens em cache. No plano gratuito, os limites de referência informados são 30 requisições/minuto, 1.000/dia, 8.000 tokens/minuto e 200.000 tokens/dia; os limites efetivos dependem da conta. |
 
-O nome do campo de tokens em cache do endpoint Gemini e a compatibilidade efetiva de tool calling dos endpoints ainda precisam de teste. A comparação de qualidade entre os provedores ainda não foi realizada.
+O nome do campo de tokens em cache do endpoint Gemini, a compatibilidade efetiva de tool calling com uma conta real e a comparação de qualidade entre os provedores ainda precisam de teste.
 
 ### Interface de interação
 
@@ -45,7 +52,7 @@ Os contatos adotados na documentação são telefone `(67) 3341-4444`, WhatsApp 
 
 ### Persistência do histórico
 
-SQLite com `sqlite3` puro em um único arquivo, sem ORM. Os dados são relacionais, as consultas são fixas e o banco da loja é reconstruído a partir dos CSVs. `memory.py` persiste conversas, mensagens, provedor e chamadas de tools. Acima de 20 mensagens ainda não resumidas, um callback de resumo mantém as 10 mensagens recentes completas e atualiza o resumo e seu limite; as mensagens originais não são apagadas. O provedor real será conectado quando `llm.py` e o loop do agente estiverem implementados. E-mails e telefones reconhecíveis no conteúdo de mensagens e nos argumentos das tools são redigidos antes de serem retornados ao histórico ou enviados ao resumidor. A conexão de escrita é isolada em `memory.py`; as tools consultam a base em modo somente leitura, com `set_authorizer` e colunas explicitamente listadas. Redis não é necessário para a execução local em um único processo. Se o projeto crescer, uma alternativa futura é SQLAlchemy/SQLModel com migrations.
+SQLite com `sqlite3` puro em um único arquivo, sem ORM. Os dados são relacionais, as consultas são fixas e o banco da loja é reconstruído a partir dos CSVs. `memory.py` persiste conversas, mensagens, provedor e chamadas de tools. Acima de 20 mensagens ainda não resumidas, um callback de resumo mantém as 10 mensagens recentes completas e atualiza o resumo e seu limite; as mensagens originais não são apagadas. O provedor configurado também é usado para resumir conversas. E-mails e telefones reconhecíveis no conteúdo de mensagens e nos argumentos das tools são redigidos antes de serem retornados ao histórico ou enviados ao resumidor. A conexão de escrita é isolada em `memory.py`; as tools consultam a base em modo somente leitura, com `set_authorizer` e colunas explicitamente listadas. Redis não é necessário para a execução local em um único processo. Se o projeto crescer, uma alternativa futura é SQLAlchemy/SQLModel com migrations.
 
 ### Tratamento dos dados
 

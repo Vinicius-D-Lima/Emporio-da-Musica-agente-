@@ -4,8 +4,8 @@
 
 ## Decisões consolidadas para orientar os passos
 
-- Provedor principal Gemini Flash (`gemini-2.5-flash`); reserva Groq (`openai/gpt-oss-120b`); cliente único `openai` com `base_url` por provedor. Se o tool calling do Gemini for incompatível, somente ele migra para o SDK nativo.
-- Fallback somente para 429, timeout e 5xx, nunca para erro de tool; registrar o provedor que respondeu.
+- Provedor principal Gemini Flash-Lite (`gemini-3.5-flash-lite`); reserva Groq (`openai/gpt-oss-120b`); cliente `openai` com `base_url` por provedor. Se o tool calling do Gemini for incompatível, somente ele migra para o SDK nativo.
+- Fallback para 404, 429, timeout e 5xx; erros 400/401 e de execução de tool não acionam fallback; registrar o provedor que respondeu.
 - Parcelamento segue o §3.1 e será calculado pela tool planejada `simular_parcelamento`, não pelo modelo.
 - Classificador baseado primeiro em regras, com LLM em caso de dúvida e rótulos múltiplos: `dado_loja`, `politica`, `acessorio`, `fora_assunto`, `saudacao`. `scikit-learn` fica para o Passo 18.
 - Acessórios serão redirecionados usando a lista exemplificativa em `data/processed/lojas_parceiras.json`, sem afirmar parceria real.
@@ -105,13 +105,17 @@ Commit sugerido: `feat(tools): verificação de cliente e status de pedido`
 
 ## Passo 7 — LLM provider e fallback
 
-Critério de aceite:
-- `llm.py` encapsula o provedor selecionado;
-- Gemini Flash usa `gemini-2.5-flash`; Groq usa `openai/gpt-oss-120b`;
-- cliente único do pacote `openai` usa `base_url` por provedor;
-- se o tool calling do Gemini for incompatível, somente Gemini migra ao SDK nativo;
-- fallback ocorre apenas em 429, timeout ou 5xx;
-- logs do provedor ficam registrados.
+- [x] `llm.py` encapsula o provedor selecionado e produz a interface `ModelCallable` usada pelo agente;
+- [x] Gemini Flash-Lite usa `gemini-3.5-flash-lite` e Groq usa `openai/gpt-oss-120b`, ambos com modelos configuráveis;
+- [x] clientes do pacote `openai` usam o `base_url` específico de cada provedor;
+- [x] erro explícito de incompatibilidade de tool calling no endpoint Gemini migra somente essa chamada para o SDK nativo;
+- [x] fallback ocorre em 404, 429, timeout e 5xx; erros 400/401 não tentam a reserva;
+- [x] logs registram o provedor e a categoria do erro sem incluir credenciais;
+- [x] testes simulam respostas, function calling, migração nativa e erros transitórios sem chamadas externas.
+
+A compatibilidade dos endpoints e as credenciais ainda precisam de uma chamada real controlada; nenhuma requisição real foi feita nesta implementação.
+
+Commit sugerido: `feat(llm): integração Gemini Groq e fallback`
 
 ## Passo 8 — Sistema de memória e histórico
 
@@ -120,7 +124,7 @@ Critério de aceite:
 - [x] acima de 20 mensagens ainda não resumidas, produz resumo por callback injetável, mantém as 10 mensagens recentes completas e registra `summary` e `summarized_until_message_id`;
 - [x] falha do resumidor preserva todas as mensagens originais; resumos sucessivos incorporam o resumo anterior.
 
-A integração do callback com o provedor real depende da implementação de `llm.py` e do loop em `agent.py`, previstos em passos próprios. As mensagens originais não são apagadas.
+A integração do callback com o provedor ocorre pelo modelo configurado no agente. As mensagens originais não são apagadas.
 
 Commit sugerido: `feat(memory): persistência e resumo do histórico`
 
@@ -151,15 +155,21 @@ Commit sugerido: `feat(intent): classificador multirrótulo por regras`
 - [x] limita chamadas a cinco rodadas de tools; permite uma chamada final sem tools e usa resposta segura se não houver texto válido ou o modelo tentar outra tool;
 - [x] histórico é persistido e resumido antes de construir o contexto, quando aplicável.
 
-O provedor real Gemini/Groq permanece pendente no Passo 7. O loop pode ser testado agora com uma função de modelo injetada, sem chaves nem requisições externas.
+O loop pode ser testado com uma função de modelo injetada, sem chaves nem requisições externas; se não for injetado, usa a configuração Gemini/Groq do Passo 7.
 
 Commit sugerido: `feat(agent): loop principal e function calling`
 
 ## Passo 12 — CLI e interface
 
-Critério de aceite:
-- `cli.py` lê opções de conversa e debug;
-- CLI chama o núcleo do agente e imprime resposta textualmente.
+- [x] `cli.py` lê as opções `--conversa ID` e `--debug`;
+- [x] CLI interativa mantém o mesmo ID de conversa entre mensagens e chama `agent.responder_mensagem()`;
+- [x] respostas são impressas em texto; `/sair`, EOF e Ctrl+C encerram a sessão;
+- [x] conversas inexistentes e falhas do agente são informadas claramente;
+- [x] testes cobrem conversa nova e retomada, múltiplas mensagens, debug e configuração ausente/inválida do provedor.
+
+A entrada é de uma linha por mensagem; não há suporte a `Shift+Enter` nesta CLI simples.
+
+Commit sugerido: `feat(cli): interface interativa de atendimento`
 
 ## Passo 14 — Exemplos e documentação de uso
 
