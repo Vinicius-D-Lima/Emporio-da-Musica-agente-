@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
+import re
 from collections.abc import Callable, Mapping, Sequence
 from typing import Protocol
 from uuid import uuid4
@@ -22,6 +25,33 @@ from . import config
 from .agent import ModelCallable, ModelMessage, ModelResponse, ToolCall
 
 logger = logging.getLogger(__name__)
+
+_EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
+_NUMERO_LONGO_RE = re.compile(r"(?<!\d)\+?\d[\d\s().-]{7,}\d(?!\d)")
+_MAX_DIAGNOSTICO_CHARS = 500
+_CAMPOS_ERRO_PROVEDOR = {
+    "error",
+    "message",
+    "code",
+    "status",
+    "type",
+    "param",
+    "reason",
+    "details",
+    "errors",
+    "fieldViolations",
+    "field",
+    "description",
+    "@type",
+    "violations",
+}
+_CAMPOS_ERRO_ANINHADOS = {
+    "error",
+    "details",
+    "errors",
+    "fieldViolations",
+    "violations",
+}
 
 _BASE_URLS = {
     "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
@@ -55,6 +85,70 @@ class _GenAIClient(Protocol):
 
 ClientFactory = Callable[..., _OpenAIClient]
 GenAIClientFactory = Callable[[str], _GenAIClient]
+
+_SEM_EXTRA_CONTENT = object()
+
+
+def _extra_content(valor: object) -> Mapping[str, object] | None:
+    extra = getattr(valor, "extra_content", _SEM_EXTRA_CONTENT)
+    if extra is _SEM_EXTRA_CONTENT:
+        model_extra = getattr(valor, "model_extra", None)
+        if isinstance(model_extra, Mapping):
+            extra = model_extra.get("extra_content", _SEM_EXTRA_CONTENT)
+    if extra is _SEM_EXTRA_CONTENT or extra is None:
+        return None
+    if not isinstance(extra, Mapping):
+        raise LLMError("O provedor retornou metadata de chamada inválida.")
+    return dict(extra)
+
+
+def _google_thought_signature(extra: object) -> bytes | None:
+    if not isinstance(extra, Mapping):
+        return None
+    if "google" not in extra:
+        return None
+    google_extra = extra.get("google")
+    if not isinstance(google_extra, Mapping):
+        raise LLMError("O Gemini retornou metadata de chamada inválida.")
+    if "thought_signature" not in google_extra:
+        return None
+    signature = google_extra["thought_signature"]
+    if not isinstance(signature, str) or not signature:
+        raise LLMError("O Gemini retornou uma thought signature inválida.")
+    try:
+        return base64.b64decode(signature, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise LLMError("O Gemini retornou uma thought signature inválida.") from exc
+
+
+def _mensagens_para_provedor(
+    mensagens: Sequence[ModelMessage], provedor: str
+) -> list[ModelMessage]:
+    if provedor == "gemini":
+        return list(mensagens)
+
+    resultado: list[ModelMessage] = []
+    for mensagem in mensagens:
+        chamadas = mensagem.get("tool_calls")
+        if (
+            mensagem.get("role") != "assistant"
+            or not isinstance(chamadas, Sequence)
+            or isinstance(chamadas, (str, bytes))
+        ):
+            resultado.append(mensagem)
+            continue
+        mensagem_sem_metadata = dict(mensagem)
+        chamadas_sem_metadata: list[object] = []
+        for chamada in chamadas:
+            if isinstance(chamada, Mapping):
+                chamada_sem_metadata = dict(chamada)
+                chamada_sem_metadata.pop("extra_content", None)
+                chamadas_sem_metadata.append(chamada_sem_metadata)
+            else:
+                chamadas_sem_metadata.append(chamada)
+        mensagem_sem_metadata["tool_calls"] = chamadas_sem_metadata
+        resultado.append(mensagem_sem_metadata)
+    return resultado
 
 
 def _api_key(ajustes: config.Configuracao, provedor: str) -> str:
@@ -118,8 +212,19 @@ def _converter_resposta_openai(resposta: object, provedor: str) -> ModelResponse
             raise LLMError("O provedor retornou uma chamada de ferramenta inválida.")
         if not isinstance(argumentos, str):
             raise LLMError("O provedor retornou argumentos de ferramenta inválidos.")
-        chamadas.append(ToolCall(call_id, nome, argumentos))
-    return ModelResponse(conteudo, tuple(chamadas), provider=provedor)
+        chamadas.append(
+            ToolCall(
+                call_id,
+                nome,
+                argumentos,
+                provider_metadata=_extra_content(chamada),
+            )
+        )
+    return ModelResponse(
+        conteudo,
+        tuple(chamadas),
+        provider=provedor,
+    )
 
 
 def _is_gemini_tool_incompatibility(exc: BadRequestError) -> bool:
@@ -164,12 +269,26 @@ def _mensagens_genai(
                 argumentos = json.loads(funcao["arguments"])
                 if not isinstance(argumentos, dict):
                     raise LLMError("Argumentos de ferramenta inválidos no histórico.")
-                partes.append(
-                    types.Part.from_function_call(
-                        name=funcao["name"],
-                        args=argumentos,
-                    )
+                thought_signature = _google_thought_signature(
+                    chamada.get("extra_content")
                 )
+                if thought_signature is None:
+                    partes.append(
+                        types.Part.from_function_call(
+                            name=funcao["name"],
+                            args=argumentos,
+                        )
+                    )
+                else:
+                    partes.append(
+                        types.Part(
+                            function_call=types.FunctionCall(
+                                name=funcao["name"],
+                                args=argumentos,
+                            ),
+                            thought_signature=thought_signature,
+                        )
+                    )
             if partes:
                 conteudos.append(types.Content(role="model", parts=partes))
         elif role == "tool":
@@ -248,11 +367,24 @@ def _chamar_gemini_nativo(
             argumentos = getattr(chamada, "args", None)
             if not isinstance(nome, str) or not isinstance(argumentos, Mapping):
                 raise LLMError("O Gemini retornou uma chamada de ferramenta inválida.")
+            thought_signature = getattr(parte, "thought_signature", None)
+            metadata = None
+            if thought_signature is not None:
+                if not isinstance(thought_signature, bytes):
+                    raise LLMError("O Gemini retornou uma thought signature inválida.")
+                metadata = {
+                    "google": {
+                        "thought_signature": base64.b64encode(
+                            thought_signature
+                        ).decode("ascii")
+                    }
+                }
             chamadas.append(
                 ToolCall(
                     call_id=f"gemini-{uuid4().hex}",
                     name=nome,
                     arguments=json.dumps(argumentos, ensure_ascii=False),
+                    provider_metadata=metadata,
                 )
             )
     texto_resposta = "\n".join(textos) or None
@@ -270,7 +402,116 @@ def _is_retryable(exc: Exception) -> bool:
     return False
 
 
-def _registrar_falha(provedor: str, exc: Exception) -> LLMError:
+def _redigir_diagnostico(
+    detalhe: str,
+    mensagens: Sequence[ModelMessage],
+    chaves_api: Sequence[str],
+) -> str:
+    valores_sensiveis: list[str] = list(chaves_api)
+    for mensagem in mensagens:
+        conteudo = mensagem.get("content")
+        if isinstance(conteudo, str):
+            valores_sensiveis.append(conteudo)
+        chamadas = mensagem.get("tool_calls", [])
+        if not isinstance(chamadas, Sequence) or isinstance(chamadas, (str, bytes)):
+            continue
+        for chamada in chamadas:
+            if not isinstance(chamada, Mapping):
+                continue
+            funcao = chamada.get("function")
+            if isinstance(funcao, Mapping):
+                argumentos = funcao.get("arguments")
+                if isinstance(argumentos, str):
+                    valores_sensiveis.append(argumentos)
+
+    for valor in sorted(set(valores_sensiveis), key=len, reverse=True):
+        if len(valor) >= 4:
+            detalhe = re.sub(
+                re.escape(valor),
+                "[conteúdo omitido]",
+                detalhe,
+                flags=re.IGNORECASE,
+            )
+    detalhe = _EMAIL_RE.sub("[e-mail omitido]", detalhe)
+    detalhe = _NUMERO_LONGO_RE.sub("[número omitido]", detalhe)
+    return detalhe[:_MAX_DIAGNOSTICO_CHARS]
+
+
+def _filtrar_campos_erro(valor: object, profundidade: int = 0) -> object:
+    if profundidade >= 8:
+        return "[limite de detalhes]"
+    if isinstance(valor, Mapping):
+        campos_filtrados: dict[str, object] = {}
+        for chave, conteudo in valor.items():
+            if chave not in _CAMPOS_ERRO_PROVEDOR:
+                continue
+            if chave in _CAMPOS_ERRO_ANINHADOS and not isinstance(
+                conteudo, (Mapping, list)
+            ):
+                continue
+            filtrado = _filtrar_campos_erro(conteudo, profundidade + 1)
+            if filtrado is not None:
+                campos_filtrados[str(chave)] = filtrado
+        return campos_filtrados
+    if isinstance(valor, list):
+        return [
+            _filtrar_campos_erro(item, profundidade + 1) for item in valor[:5]
+        ]
+    if isinstance(valor, (str, int, float, bool)) or valor is None:
+        return valor
+    return None
+
+
+def _detalhe_tecnico(exc: Exception) -> str | None:
+    resposta = getattr(exc, "response", None)
+    texto_resposta = getattr(resposta, "text", None)
+    filtrado: object = None
+    if isinstance(texto_resposta, str) and texto_resposta:
+        try:
+            corpo_resposta = json.loads(texto_resposta[:16_000])
+        except json.JSONDecodeError:
+            filtrado = {"response": texto_resposta[:_MAX_DIAGNOSTICO_CHARS]}
+        else:
+            filtrado = _filtrar_campos_erro(corpo_resposta)
+
+    if not filtrado:
+        corpo = getattr(exc, "body", None)
+        if isinstance(corpo, (str, bytes)):
+            texto_corpo = (
+                corpo.decode("utf-8", errors="replace")
+                if isinstance(corpo, bytes)
+                else corpo
+            )
+            try:
+                corpo = json.loads(texto_corpo[:16_000])
+            except json.JSONDecodeError:
+                corpo = None
+        filtrado = _filtrar_campos_erro(corpo)
+
+    if not filtrado:
+        campos: dict[str, object] = {}
+        codigo = getattr(exc, "code", None)
+        tipo = getattr(exc, "type", None)
+        mensagem = getattr(exc, "message", None)
+        if isinstance(codigo, (str, int)):
+            campos["code"] = codigo
+        if isinstance(tipo, str):
+            campos["type"] = tipo
+        if isinstance(mensagem, str):
+            campos["message"] = mensagem
+        filtrado = campos
+    if not filtrado:
+        return None
+    return json.dumps(filtrado, ensure_ascii=False, separators=(",", ":"))
+
+
+def _registrar_falha(
+    provedor: str,
+    exc: Exception,
+    *,
+    mensagens: Sequence[ModelMessage],
+    chaves_api: Sequence[str],
+) -> LLMError:
     logger.error(
         "Falha no provedor LLM %s (%s).",
         provedor,
@@ -278,6 +519,19 @@ def _registrar_falha(provedor: str, exc: Exception) -> LLMError:
     )
     status = getattr(exc, "status_code", getattr(exc, "code", None))
     detalhe_status = f", status {status}" if status is not None else ""
+    detalhe = _detalhe_tecnico(exc)
+    if detalhe is not None:
+        detalhe_redigido = _redigir_diagnostico(
+            detalhe,
+            mensagens,
+            chaves_api,
+        )
+        logger.debug(
+            "Detalhe técnico do provedor %s (status %s): %s",
+            provedor,
+            status,
+            detalhe_redigido,
+        )
     return LLMError(
         f"Falha ao chamar o provedor LLM {provedor!r} "
         f"({type(exc).__name__}{detalhe_status})."
@@ -307,7 +561,7 @@ def criar_modelo(
         try:
             argumentos: dict[str, object] = {
                 "model": _modelo(configuracao, provedor),
-                "messages": list(mensagens),
+                "messages": _mensagens_para_provedor(mensagens, provedor),
             }
             if tools:
                 argumentos["tools"] = list(tools)
@@ -347,7 +601,15 @@ def criar_modelo(
         ) as exc:
             reserva = configuracao.llm_fallback
             if not _is_retryable(exc) or reserva is None or reserva == principal:
-                raise _registrar_falha(principal, exc) from exc
+                raise _registrar_falha(
+                    principal,
+                    exc,
+                    mensagens=mensagens,
+                    chaves_api=(
+                        configuracao.gemini_api_key,
+                        configuracao.groq_api_key,
+                    ),
+                ) from exc
             logger.warning(
                 "Provedor LLM %s indisponível (%s); tentando %s.",
                 principal,
@@ -362,7 +624,15 @@ def criar_modelo(
                 GenAIAPIError,
                 httpx.TimeoutException,
             ) as erro_reserva:
-                raise _registrar_falha(reserva, erro_reserva) from erro_reserva
+                raise _registrar_falha(
+                    reserva,
+                    erro_reserva,
+                    mensagens=mensagens,
+                    chaves_api=(
+                        configuracao.gemini_api_key,
+                        configuracao.groq_api_key,
+                    ),
+                ) from erro_reserva
         logger.info("Resposta recebida do provedor LLM %s.", resposta.provider)
         return resposta
 

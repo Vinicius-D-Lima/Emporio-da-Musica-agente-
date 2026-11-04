@@ -16,12 +16,22 @@
    `python -m emporio_agent.cli --conversa ID`.
 6. Use `--debug` para habilitar logs de depuração:
    `python -m emporio_agent.cli --debug`.
+   Em falhas do provedor, esse modo mostra campos técnicos permitidos da resposta,
+   sem registrar o corpo da requisição. Conteúdo completo das mensagens, e-mails,
+   números longos e chaves são redigidos; logs HTTP de terceiros, que podem conter
+   cabeçalhos como `Set-Cookie`, são suprimidos.
+   Em falhas do provedor, esse modo mostra o código e a mensagem técnica da resposta,
+   sem registrar o corpo da requisição. Valores completos das mensagens, e-mails,
+   números longos e chaves são redigidos; logs HTTP de terceiros, que podem conter
+   cabeçalhos como `Set-Cookie`, são suprimidos.
 
 ### Provedor e configuração
 
 O padrão é Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`) e o reserva é Groq (`openai/gpt-oss-120b`). A implementação usa os pacotes `openai` e `google-genai`, configurando o endpoint conforme o provedor. Preencha `GEMINI_API_KEY` e `GROQ_API_KEY` no `.env`; não coloque chaves reais no repositório. `REFERENCE_DATETIME` define a referência no fuso `America/Campo_Grande` e, se necessário, pode ser alterada. Se omitida, o relógio atual é usado.
 
 O agente usa por padrão Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`) com Groq (`openai/gpt-oss-120b`) como reserva, ou os modelos configurados em `GEMINI_MODEL` e `GROQ_MODEL`. O fallback ocorre em modelo/endpoint não encontrado (404), limite de requisições (429), timeout ou erro 5xx; erros 400/401 não acionam a reserva para não mascarar erros de requisição ou credenciais. Se o endpoint compatível com OpenAI do Gemini rejeitar explicitamente function calling, essa chamada migra para o SDK nativo do Gemini. O provedor que respondeu fica registrado no histórico. O loop também aceita um modelo injetado para testes locais, sem chaves nem chamadas externas. Para manter uma conversa entre chamadas diretas a `responder_mensagem()`, crie uma conversa com `memory.criar_conversa()` e passe o mesmo `conversa_id`.
+
+Durante o function calling do Gemini, a `thought_signature` retornada junto à chamada é encaminhada em memória na próxima requisição, inclusive na conversão para o SDK nativo. Ela não é registrada no histórico persistente nem nos logs e é removida caso a próxima chamada use o Groq como reserva.
 
 Os testes dos provedores usam clientes simulados e não fazem requisições externas. Chamadas reais enviam texto e contexto ao endpoint configurado; dados fornecidos para verificação de pedidos também podem ser enviados. Avalie privacidade, consentimento e retenção antes de usar dados de clientes, e faça uma chamada real controlada para validar credenciais e compatibilidade antes do uso comercial.
 

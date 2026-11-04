@@ -28,6 +28,25 @@ def _criar_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _configurar_logging(debug: bool) -> None:
+    nivel = logging.DEBUG if debug else logging.WARNING
+    logging.basicConfig(
+        level=nivel,
+        format="%(levelname)s: %(message)s",
+    )
+    logging.getLogger().setLevel(nivel)
+    if debug:
+        for nome in (
+            "openai",
+            "httpx",
+            "httpx2",
+            "httpcore",
+            "httpcore2",
+            "google",
+        ):
+            logging.getLogger(nome).setLevel(logging.WARNING)
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -35,10 +54,7 @@ def main(
 ) -> int:
     """Executa a conversa interativa e imprime as respostas do agente."""
     args = _criar_parser().parse_args(argv)
-    logging.basicConfig(
-        level=logging.DEBUG if args.debug else logging.WARNING,
-        format="%(levelname)s: %(message)s",
-    )
+    _configurar_logging(args.debug)
     conversa_id = args.conversa
     if conversa_id is not None:
         try:

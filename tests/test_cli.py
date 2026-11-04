@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import logging
 import re
 import sqlite3
 from pathlib import Path
@@ -68,6 +69,36 @@ def test_cli_interativa_cria_conversa_persistente_e_processa_varias_mensagens(
         "user",
         "assistant",
     ]
+
+
+def test_debug_suprime_logs_de_transporte_de_terceiros(
+    banco_cli: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    nomes_loggers_terceiros = (
+        "openai",
+        "httpx",
+        "httpx2",
+        "httpcore",
+        "httpcore2",
+        "google",
+    )
+    loggers = [logging.getLogger(nome) for nome in nomes_loggers_terceiros]
+    niveis_originais = [logger.level for logger in loggers]
+    for logger, nivel in zip(loggers, niveis_originais, strict=True):
+        monkeypatch.setattr(logger, "level", nivel)
+    monkeypatch.setattr("builtins.input", lambda prompt: "/sair")
+
+    assert (
+        cli.main(
+            ["--debug"],
+            modelo=lambda mensagens, tools: agent.ModelResponse("Resposta"),
+        )
+        == 0
+    )
+
+    assert all(logger.level >= logging.WARNING for logger in loggers)
+    assert logging.getLogger("emporio_agent.llm").getEffectiveLevel() == logging.DEBUG
 
 
 def test_cli_reutiliza_conversa_informada(
