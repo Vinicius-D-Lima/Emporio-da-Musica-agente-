@@ -6,18 +6,21 @@
 
 ### Ambiente
 
-Use Python 3.11 ou superior. A partir da raiz do repositório, crie e ative um
-ambiente virtual, instale o projeto e copie o arquivo de configuração:
+Use Python 3.11 ou superior. Execute os comandos abaixo na raiz do repositório
+(a pasta que contém `README.md` e `pyproject.toml`). No Linux, `python3` cria o
+ambiente virtual; depois de ativá-lo, `python` aponta para o Python do projeto:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
-cp .env.example .env
+python -m pip install -e .
+cp -n .env.example .env
 ```
 
-Edite `.env` e preencha as chaves dos provedores. Com a configuração pronta,
-gere o banco a partir dos CSVs e inicie a CLI:
+O `cp -n` cria `.env` sem substituir um arquivo que já exista. Edite `.env` e
+preencha as chaves `GEMINI_API_KEY` e `GROQ_API_KEY` (ou deixe
+`LLM_FALLBACK=` vazio para usar apenas um provedor). Em seguida, gere o banco e
+inicie a CLI, ainda com o ambiente virtual ativado:
 
 ```bash
 python scripts/build_db.py
@@ -31,6 +34,37 @@ Use `python -m emporio_agent.cli --debug` para habilitar logs de depuração.
 Esse modo registra apenas campos técnicos permitidos em falhas, sem registrar o
 corpo da requisição; valores de mensagens, chaves e dados pessoais reconhecidos
 são redigidos, e logs HTTP de terceiros são suprimidos.
+
+### Testes e cenários
+
+Com o ambiente virtual ativado, execute os testes automatizados locais (sem
+chamadas a provedores reais):
+
+```bash
+python -m pytest
+```
+
+Os cenários adversários com LLM real estão em
+[`tests/test_scenarios.py`](tests/test_scenarios.py) e são identificados de
+`A01` a `A24`. Para executar somente um cenário, por exemplo o `A01`:
+
+```bash
+python -m pytest --run-llm -m llm tests/test_scenarios.py -k A01
+```
+
+Para executar todos os cenários com LLM real:
+
+```bash
+python -m pytest --run-llm -m llm tests/test_scenarios.py
+```
+
+Esses dois últimos comandos fazem chamadas externas, enviam as mensagens dos
+cenários aos provedores configurados e podem consumir cota ou gerar custos.
+Configure as chaves no `.env` e use dados de teste, não dados pessoais reais.
+Ao abrir um terminal novo, entre novamente na pasta do projeto e ative o
+ambiente com `source .venv/bin/activate`. Se aparecer `python: command not
+found`, confira se o ambiente está ativado e se o comando foi executado na raiz
+do repositório.
 
 ### Provedor e configuração
 
@@ -168,10 +202,6 @@ e não afirma parceria comercial.
 - Os testes determinísticos usam modelos simulados. Testes com provedores reais são opt-in e não devem ser descritos como executados sem uma execução confirmada.
 
 O processo foi planejado em passos pequenos, com critérios de aceite e testes (ver `docs/PLANO_DE_PASSOS.md`); o registro real está em `docs/USO_DE_IA.md`.
-
-## Testes
-
-Execute os testes determinísticos com `python -m pytest`. Os 24 cenários que usam os provedores reais são marcados `llm` e ficam ignorados por padrão. Para executá-los explicitamente, use `python -m pytest --run-llm -m llm tests/test_scenarios.py`; essa execução pode enviar mensagens aos provedores configurados e consumir cota ou gerar custos.
 
 ## Exemplos de interação
 
