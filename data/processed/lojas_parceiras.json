@@ -1,0 +1,36 @@
+{
+  "responsabilidade": "Fornecer uma lista exemplificativa de estabelecimentos para redirecionamentos de acessórios.",
+  "observacao": "Lista de exemplo para redirecionamento de clientes; estes estabelecimentos não são necessariamente parceiros reais do Empório da Música.",
+  "lojas": [
+    {
+      "nome": "Mercado Livre",
+      "tipo": "marketplace",
+      "site": "mercadolivre.com.br"
+    },
+    {
+      "nome": "Amazon Brasil",
+      "tipo": "marketplace",
+      "site": "amazon.com.br"
+    },
+    {
+      "nome": "Shopee",
+      "tipo": "marketplace",
+      "site": "shopee.com.br"
+    },
+    {
+      "nome": "Multisom",
+      "tipo": "loja especializada",
+      "site": null
+    },
+    {
+      "nome": "Mil Sons",
+      "tipo": "loja especializada",
+      "site": null
+    },
+    {
+      "nome": "Serenata",
+      "tipo": "loja especializada",
+      "site": null
+    }
+  ]
+}

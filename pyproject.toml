@@ -11,10 +11,14 @@ dependencies = [
   "pydantic",
   "python-dotenv",
   "tiktoken",
+  "openai",
+  "google-genai",
+  "httpx",
   "pytest",
 ]
 
 [tool.pytest.ini_options]
+pythonpath = [".", "src"]
 markers = [
   "llm: testes que chamam LLM e ficam pulados por padrão",
 ]
