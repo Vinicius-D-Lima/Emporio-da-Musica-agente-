@@ -40,6 +40,7 @@ As decisões registradas pelo usuário e os motivos informados durante as conver
 | Acessórios serão redirecionados usando uma lista fixa de lojas de exemplo, sem alegar parceria real. | O manual recomenda lojas, mas não fornece uma lista de parceiras. |
 | Data e hora são configuráveis por `REFERENCE_DATETIME`, no fuso `America/Campo_Grande`; padrão `2026-03-23T10:00:00`. | Centraliza a referência temporal e permite reproduzir cenários. |
 | Havendo duas promoções ativas no mesmo produto, prevalece a de maior desconto. | Evita acumular descontos e define um resultado determinístico. |
+| `promocoes_ativas` aceita `product_id` ou nome/modelo; consultas ambíguas retornam candidatos sem preços e exigem esclarecimento. | Permite uma consulta mais natural sem fazer o agente escolher silenciosamente entre produtos semelhantes. |
 | Telefone `(67) 3341-4444`, WhatsApp `(67) 3321-4500` e e-mail `contato@emporiodamusica.com.br`. | A opção B separa os canais de telefone e WhatsApp conforme as informações encontradas no manual; o domínio do e-mail é usado sem acento. |
 | GitHub Copilot é a ferramenta de desenvolvimento. | É a ferramenta escolhida para trabalhar com instruções, agentes, subagentes e skills. |
 

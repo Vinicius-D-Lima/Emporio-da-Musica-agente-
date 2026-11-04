@@ -109,7 +109,11 @@ _TOOLS: dict[str, _ToolSpec] = {
     "promocoes_ativas": _ToolSpec(
         function=promocoes_ativas,
         arguments=PromocoesAtivasArgs,
-        description="Consulta promoções ativas ou preços atuais de um produto.",
+        description=(
+            "Consulta promoções ativas ou o preço atual de um produto por ID, "
+            "nome ou modelo. Se a busca por nome retornar ambiguidade, peça "
+            "mais detalhes antes de informar um preço."
+        ),
     ),
     "simular_parcelamento": _ToolSpec(
         function=simular_parcelamento,

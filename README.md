@@ -125,6 +125,10 @@ O classificador aplica regras primeiro e chama um classificador LLM opcional som
 
 O processo foi planejado em passos pequenos, com critérios de aceite e testes (ver `docs/PLANO_DE_PASSOS.md`); o registro real está em `docs/USO_DE_IA.md`.
 
+## Testes
+
+Execute os testes determinísticos com `python -m pytest`. Os 24 cenários que usam os provedores reais são marcados `llm` e ficam ignorados por padrão. Para executá-los explicitamente, use `python -m pytest --run-llm -m llm tests/test_scenarios.py`; essa execução pode enviar mensagens aos provedores configurados e consumir cota ou gerar custos.
+
 ## Exemplos de interação
 
 - [Exemplo 01 — catálogo de violões](examples/01_catalogo_violoes.md)

@@ -40,7 +40,7 @@ def _termos_normalizados(texto: str) -> tuple[list[str], str]:
     return termos, "".join(termos)
 
 
-def _corresponde_nome(query: str, nome: str) -> bool:
+def corresponde_nome(query: str, nome: str) -> bool:
     termos_query, query_compacta = _termos_normalizados(query)
     termos_nome, nome_compacto = _termos_normalizados(nome)
     return query_compacta in nome_compacto or all(
@@ -127,7 +127,7 @@ def buscar_produtos(
         linhas = [
             linha
             for linha in linhas
-            if _corresponde_nome(argumentos.query, linha["name"])
+            if corresponde_nome(argumentos.query, linha["name"])
         ]
 
     total = len(linhas)
